@@ -20,15 +20,15 @@
 
 ## 현재 상태
 
-2026-10-09, 비어 있는 GitHub 저장소에서 새로 시작했습니다. 현재 제품은 **GPT 대표 장면 관절 제안 → 사람의 좌표 확인·수정 → 코드의 각도·REBA 계산**입니다. 대상자 선택 → 영상 등록·작업 조건 입력 → 장면·쪽·몸 방향 선택 → 전송 동의 → 좌표 검토 → Q1~Q4 → 결과 요약·상세 평가서로 이어집니다. 목·손목과 작업 조건은 사람 확인을 유지하며, 미확인·확인 불가 입력에는 확정 점수를 내지 않습니다. 공개 영상 실제 API와 반복 안정성은 [VLM 검증 기록](docs/VLM_VERIFICATION.md), 구현·실행은 [VLM 연결 안내](docs/VLM_TRANSITION.md)를 확인하십시오. **독립 정답 대비 정확도·현장 영상·공개 API 배포는 미검증**이며 개선안 생성·법정 조사표 전체는 구현하지 않았습니다.
+2026-10-09, 비어 있는 GitHub 저장소에서 새로 시작했습니다. 현재 제품은 **GPT 대표 장면 관절 제안 → 사람의 좌표 확인·수정 → 코드의 각도·REBA 계산**입니다. 대상자 선택 → 영상 등록·작업 조건 입력 → 장면·쪽·몸 방향 선택 → 전송 동의 → 좌표 검토 → Q1~Q4 → 결과 요약·상세 평가서로 이어집니다. 목·손목과 작업 조건은 사람 확인을 유지하며, 미확인·확인 불가 입력에는 확정 점수를 내지 않습니다. **공개 웹에서 실제 Auth·DB·비공개 영상 업로드·새로고침 후 영상 복원·GPT 분석·REBA·상세 평가서 연결을 검증했습니다.** 검증 결과와 분모는 [VLM 검증 기록](docs/VLM_VERIFICATION.md), 구현·실행은 [VLM 연결 안내](docs/VLM_TRANSITION.md)를 확인하십시오. 독립 정답 대비 정확도·현장 영상은 미검증이며 개선안 생성·법정 조사표 전체는 구현하지 않았습니다.
 
-팀이 공유한 **[심사위원용 웹 시연 주소](https://cityboy7648-dot.github.io/SafeAngle/)**를 보존합니다. `예시 사진으로 화면 둘러보기`는 실제 분석과 구별한 시안 흐름입니다. 이 PR의 실제 영상 분석·점수 산출이 해당 주소에 반영됐는지는 아직 검증하지 않았습니다.
+실제 영상 분석과 점수 산출을 확인한 **[공개 웹](https://midnightsun90.github.io/SafeAngle/)**입니다. 팀이 공유한 [기존 시연 주소](https://cityboy7648-dot.github.io/SafeAngle/)도 보존하지만 해당 주소의 최신 반영 여부는 확인하지 않았습니다. `예시 사진으로 화면 둘러보기`는 실제 분석과 구별한 시안 흐름입니다.
 
 **팀 연결 안내: [GPT 연결·실행](docs/VLM_TRANSITION.md), [REBA 계약](docs/REBA.md)**. 루트에서 `npm ci`, `npm --prefix frontend ci`를 실행하고 `.env.example`을 `.env.local`로 복사해 서버 API 키를 설정합니다. 터미널 하나에서 `npm run vision:dev`, 다른 터미널에서 `npm --prefix frontend run dev`를 실행합니다. 웹 localhost:3000, API 127.0.0.1:3212입니다. 채점은 `sceneFromVlm` → `emptyAnswers` → 사람 확인 → `scorePostureScene`입니다.
 
 **제품의 모델 호출은 OpenAI API만 사용합니다.** 팀장이 전달한 검증 보고서의 확정 방향에 따라 `gpt-6.1-sol`로 전환했습니다. MediaPipe의 대회 허용 여부를 확인했다고 기록하지 않으며, 기존 MediaPipe 코드·테스트는 이력과 호환성 확인용으로 남깁니다. 제품 화면은 호출하지 않고 정적 빌드에서도 모델·WASM 준비를 제거했습니다.
 
-**공개 배포에 필요한 설정:** 별도 HTTPS API 서버를 배포하고 허용 Origin을 지정한 뒤 GitHub repository variable `VISION_API_URL`에 서버의 `/api/vision` 주소를 등록해 웹을 다시 빌드해야 합니다. GitHub Pages 정적 웹만으로 API 키를 안전하게 사용할 수 없습니다. 현재 심사 URL에 이 전환이 반영됐다고 주장하지 않습니다.
+**공개 배포 설정:** GitHub Pages와 별도 Vercel HTTPS API를 연결했습니다. repository variable `VISION_API_URL`은 `https://safeangle-api.vercel.app/api/vision`이며 허용 Origin은 `https://midnightsun90.github.io`입니다. API는 실제 Supabase 세션을 검증합니다. `OPENAI_API_KEY`는 Vercel Production Secret이고 브라우저와 Git에 넣지 않습니다. 대표 장면의 공개 API 호출은 약 26~33초였으며 이미지·좌표·점수는 탭 메모리에만 남아 새로고침 후 재분석이 필요합니다.
 
 ## 해커톤 제출과 운영 (2026-10-09 원문·제출 화면 확인)
 
@@ -231,4 +231,4 @@ AI 전송 동의는 영상 선택과 별도로 받습니다. 동의가 없거나
 - [OpenAI Responses API](https://developers.openai.com/api/reference/responses/overview), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [해커톤 안내](https://luma.com/f7h7onav), [상세 규정](https://codex-community-korea.skysplit.chatgpt.site/hackathon/seoul-2026-10)
 
-엔진 실행 준비와 검증 상태는 [관절 추적 엔진 MVP](docs/ENGINE.md), 웹의 실행·정적 빌드·모델 경로는 [REBA 연결](docs/REBA.md)에 있습니다. 실제 서비스 URL의 배포 검증은 아직 수행하지 않았습니다.
+기존 엔진 준비 기록은 [관절 추적 엔진 MVP](docs/ENGINE.md), REBA 기준은 [REBA 연결](docs/REBA.md)에 있습니다. 현재 제품의 공개 배포·실제 저장·GPT 연결 검증은 [VLM 검증 기록](docs/VLM_VERIFICATION.md)을 확인하십시오.
