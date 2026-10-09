@@ -76,3 +76,26 @@ test("API checks CORS, JPEG size, missing configuration and returns only safe er
     const error=await response.json();assert.equal(error.error.code,"not_configured");assert.ok(!JSON.stringify(error).includes("Authorization"));
   }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
+test("public API requires verified Supabase session, allows preflight and hides auth errors",async()=>{
+  let calls=0,authState="valid";
+  const fetcher:typeof fetch=async(url,init)=>{
+    if(url==="https://auth.example.test/auth/v1/user"){
+      assert.equal(new Headers(init?.headers).get("Authorization"),"Bearer controlled-session");
+      if(authState==="offline")throw new Error("private error details");
+      return new Response(JSON.stringify(authState==="valid"?{id:"controlled-user"}:{}),{status:authState==="valid"?200:401});
+    }
+    calls++;return goodFetch(url,init);
+  };
+  const server=createVisionServer({apiKey:"test-key",allowedOrigins:["https://midnightsun90.github.io"],supabaseAuth:{url:"https://auth.example.test",publishableKey:"test-public-key"},fetcher});
+  await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
+  const address=server.address();assert.ok(address&&typeof address==="object");const url=`http://127.0.0.1:${address.port}/api/vision`;
+  const headers={Origin:"https://midnightsun90.github.io","Content-Type":"application/json"};
+  try{
+    const preflight=await fetch(url,{method:"OPTIONS",headers});assert.equal(preflight.status,204);assert.match(preflight.headers.get("access-control-allow-headers")!,/Authorization/);
+    assert.equal((await fetch(url,{method:"POST",headers,body:JSON.stringify(request())})).status,401);assert.equal(calls,0);
+    const authorized={...headers,Authorization:"Bearer controlled-session"};
+    authState="expired";assert.equal((await fetch(url,{method:"POST",headers:authorized,body:JSON.stringify(request())})).status,401);assert.equal(calls,0);
+    authState="valid";assert.equal((await fetch(url,{method:"POST",headers:authorized,body:JSON.stringify(request())})).status,200);assert.equal(calls,1);
+    authState="offline";const failure=await fetch(url,{method:"POST",headers:authorized,body:JSON.stringify(request())});assert.equal(failure.status,502);assert.ok(!(await failure.text()).includes("private error details"));assert.equal(calls,1);
+  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

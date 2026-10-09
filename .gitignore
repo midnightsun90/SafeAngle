@@ -12,3 +12,5 @@ frontend/public/wasm/
 frontend/public/models/
 .local/
 .engine-build/
+.vercel/
+.api-build/

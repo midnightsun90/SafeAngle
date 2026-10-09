@@ -1,12 +1,15 @@
 import type { VlmProposal, VlmRequest } from "../../../lib/vlm/contract.ts";
 import { parseVlmResponse, sameCapture } from "../../../lib/vlm/validation.ts";
+import { supabase } from "./supabaseClient";
 
 export async function requestJoints(input:VlmRequest,signal:AbortSignal):Promise<VlmProposal>{
   const configured=process.env.NEXT_PUBLIC_VISION_API_URL;
   const local=["localhost","127.0.0.1"].includes(window.location.hostname);
   const endpoint=configured||(local?"http://127.0.0.1:3212/api/vision":"");
   if(!endpoint)throw new Error("GPT 분석 서버 주소가 설정되지 않았습니다. 팀의 서버 배포 설정을 확인하십시오.");
-  const response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input),signal});
+  const session=await supabase?.auth.getSession(),token=session?.data.session?.access_token;
+  if(signal.aborted)throw new DOMException("분석 요청이 취소됐습니다.","AbortError");
+  const response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(input),signal});
   const result=parseVlmResponse(await response.json());
   if(result.status==="error")throw new Error(result.error.message);
   if(!response.ok)throw new Error("분석 서버 호출에 실패했습니다.");

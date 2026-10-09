@@ -31,6 +31,6 @@ export interface VlmEvidence {
   reviewedPoints: VlmPoints;
   confirmedBy: "human";
 }
-export const VLM_ERROR_CODES = ["invalid_request", "consent_required", "image_too_large", "not_configured", "rate_limited", "timeout", "refused", "incomplete", "invalid_output", "upstream_error"] as const;
+export const VLM_ERROR_CODES = ["invalid_request", "unauthorized", "consent_required", "image_too_large", "not_configured", "rate_limited", "timeout", "refused", "incomplete", "invalid_output", "upstream_error"] as const;
 export type VlmErrorCode = typeof VLM_ERROR_CODES[number];
 export type VlmResponse = VlmProposal | { status: "error"; requestId: string | null; error: { code: VlmErrorCode; message: string } };

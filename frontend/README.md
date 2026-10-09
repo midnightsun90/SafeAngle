@@ -18,10 +18,10 @@ http://localhost:3000
 
 `main`의 `frontend/` 또는 배포 워크플로가 변경되면 `.github/workflows/deploy-frontend.yml`에서 정적 사이트를 빌드해 배포한다. GitHub 저장소의 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정해야 한다.
 
-예상 주소: https://midnightsun90.github.io/SafeAngle/
+공개 주소: https://midnightsun90.github.io/SafeAngle/ (GitHub Actions 방식 활성화)
 
 GitHub Pages는 정적 사이트를 제공한다. 평가자·대상자 이름은 Supabase에 저장하며, 원본 영상은 비공개 Supabase에 저장하고, 장면 추출·좌표 검토·각도와 REBA 계산은 브라우저에서 처리한다.
 
-GPT API에는 별도 HTTPS 서버가 필요하다. repository variable `VISION_API_URL`을 설정한 뒤 웹을 다시 빌드한다. 브라우저 번들이나 `NEXT_PUBLIC_` 환경변수에 OpenAI 키를 넣지 않는다.
+GPT API는 `https://safeangle-api.vercel.app/api/vision`이다. repository variable `VISION_API_URL`을 이 주소로 설정하고 웹을 빌드한다. 기존 Supabase 로그인 세션을 전달하며, 공개 API는 로그인 없이 분석하지 않는다. 브라우저 번들이나 `NEXT_PUBLIC_` 환경변수에 OpenAI 키를 넣지 않는다.
 
 이 폴더의 과거 TailAdmin 기반 코드에 대한 라이선스 기록은 `LICENSE`에 남겨 두었다.
