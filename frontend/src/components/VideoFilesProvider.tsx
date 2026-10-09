@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber } from "@/lib/evaluationStore";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredAssessments, mergeStoredPeople, postureInputRows, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredAssessment, type StoredPerson, type StoredPostureInput, type VideoNumber } from "@/lib/evaluationStore";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
 
@@ -11,6 +11,17 @@ const emptyFiles = (): VideoFiles => ({ 1: null, 2: null, 3: null });
 const emptyAnswers = (): Record<VideoNumber, Record<string, string>> => ({ 1: {}, 2: {}, 3: {} });
 const emptyTimes = (): Record<VideoNumber, number | null> => ({ 1: null, 2: null, 3: null });
 const demoStorageKey = "safeangle-preview-demo";
+const pendingSyncKey = "safeangle.pending-inputs.v1";
+function readPendingSync(): Record<string, string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(pendingSyncKey) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch { return {}; }
+}
+function writePendingSync(value: Record<string, string>): void {
+  if (Object.keys(value).length) localStorage.setItem(pendingSyncKey, JSON.stringify(value));
+  else localStorage.removeItem(pendingSyncKey);
+}
 function readDemoSession(): boolean {
   try { return sessionStorage.getItem(demoStorageKey) === "1"; }
   catch { return false; }
@@ -46,6 +57,10 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [canPersist, setCanPersist] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [managerId, setManagerId] = useState<string | null>(null);
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  const lastSaved = useRef(new Map<string, string>());
+  const syncVersion = useRef(0);
   const [filesByPerson, setFilesByPerson] = useState<Record<string, VideoFiles>>({});
   const [demoAnswers, setDemoAnswers] = useState(emptyAnswers);
   const [demoTimes, setDemoTimes] = useState(emptyTimes);
@@ -95,8 +110,29 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
           ? await supabase.from("people").select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
           : { data: existing, error: null };
         if (refreshError) throw refreshError;
+        const mergedPeople = mergeStoredPeople(saved, managerName, (people ?? []) as StoredPerson[]);
+        const { data: existingAssessments, error: assessmentError } = await supabase.from("assessments")
+          .select("id,person_id,created_at").eq("manager_id", user.id).order("created_at", { ascending: false });
+        if (assessmentError) throw assessmentError;
+        const assessedPeople = new Set((existingAssessments ?? []).map((row) => row.person_id));
+        const missingAssessments = mergedPeople.evaluations.filter((item) => !assessedPeople.has(item.id));
+        if (missingAssessments.length) {
+          const { error } = await supabase.from("assessments").insert(missingAssessments.map((item) => ({
+            id: item.assessmentId ?? crypto.randomUUID(), manager_id: user.id, person_id: item.id,
+          })));
+          if (error) throw error;
+        }
+        const { data: assessments, error: assessmentRefreshError } = missingAssessments.length
+          ? await supabase.from("assessments").select("id,person_id,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
+          : { data: existingAssessments, error: null };
+        if (assessmentRefreshError) throw assessmentRefreshError;
+        const { data: inputs, error: inputError } = await supabase.from("assessment_posture_inputs")
+          .select("assessment_id,posture_type,is_skipped,selected_time_seconds,answers").eq("manager_id", user.id);
+        if (inputError) throw inputError;
         if (!cancelled) {
-          setDashboard(mergeStoredPeople(saved, managerName, (people ?? []) as StoredPerson[]));
+          const pending = new Set(Object.keys(readPendingSync()));
+          setDashboard(mergeStoredAssessments(mergedPeople, (assessments ?? []) as StoredAssessment[], (inputs ?? []) as StoredPostureInput[], pending));
+          setManagerId(user.id);
           setCanPersist(true);
         }
       } catch {
@@ -114,6 +150,44 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(dashboardStorageKey, JSON.stringify(dashboard)); setStorageError(false); }
     catch { setStorageError(true); }
   }, [dashboard, ready, canPersist]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!ready || !canPersist || !managerId || demoMode || !client) return;
+    const currentVersion = syncVersion.current;
+    const evaluations = dashboard.evaluations.filter((item) => item.assessmentId);
+    try {
+      const pending = readPendingSync();
+      for (const item of evaluations) {
+        if (!item.assessmentId) continue;
+        const snapshot = JSON.stringify(postureInputRows(item, managerId));
+        if (lastSaved.current.get(item.assessmentId) !== snapshot) pending[item.assessmentId] = snapshot;
+      }
+      writePendingSync(pending);
+    } catch { setStorageError(true); }
+    const timer = window.setTimeout(() => {
+      writeQueue.current = writeQueue.current.catch(() => {}).then(async () => {
+        if (currentVersion !== syncVersion.current) return;
+        for (const item of evaluations) {
+          const rows = postureInputRows(item, managerId);
+          const snapshot = JSON.stringify(rows);
+          if (!item.assessmentId || lastSaved.current.get(item.assessmentId) === snapshot) continue;
+          const { error } = await client.from("assessment_posture_inputs").upsert(rows, { onConflict: "assessment_id,posture_type" });
+          if (error) throw error;
+          lastSaved.current.set(item.assessmentId, snapshot);
+          const pending = readPendingSync();
+          if (pending[item.assessmentId] === snapshot) {
+            delete pending[item.assessmentId];
+            writePendingSync(pending);
+          }
+        }
+        if (currentVersion === syncVersion.current) setConnectionError("");
+      }).catch(() => {
+        if (currentVersion === syncVersion.current) setConnectionError("평가 내용을 DB에 저장하지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.");
+      });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [dashboard, ready, canPersist, managerId, demoMode]);
 
   const activeEvaluation = dashboard.evaluations.find((item) => item.id === dashboard.activeId) ?? null;
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
@@ -138,6 +212,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
     setConnectionError("");
     setCanPersist(true);
+    setManagerId(user.id);
     setDashboard((current) => ({ ...current, evaluatorName: trimmed }));
   }
 
@@ -146,9 +221,17 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     const { data: userData, error: authError } = await supabase.auth.getUser();
     if (authError || !userData.user) throw authError ?? new Error("로그인이 필요합니다.");
     const id = crypto.randomUUID();
+    const assessmentId = crypto.randomUUID();
     const { error } = await supabase.from("people").insert({ id, manager_id: userData.user.id, name: name.trim() });
     if (error) throw error;
-    setDashboard((current) => addEvaluation(current, name, id));
+    const { error: assessmentError } = await supabase.from("assessments").insert({
+      id: assessmentId, manager_id: userData.user.id, person_id: id,
+    });
+    if (assessmentError) {
+      await supabase.from("people").delete().eq("id", id).eq("manager_id", userData.user.id);
+      throw assessmentError;
+    }
+    setDashboard((current) => addEvaluation(current, name, id, assessmentId));
     setDemoMode(false);
     writeDemoSession(false);
     setResultVideo(1);
@@ -156,11 +239,26 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
 
   async function logOut() {
     if (!supabase) throw new Error("DB 설정이 없습니다.");
+    await writeQueue.current;
+    if (managerId) {
+      for (const item of dashboard.evaluations) {
+        if (!item.assessmentId) continue;
+        const rows = postureInputRows(item, managerId);
+        const snapshot = JSON.stringify(rows);
+        if (lastSaved.current.get(item.assessmentId) === snapshot) continue;
+        const { error } = await supabase.from("assessment_posture_inputs").upsert(rows, { onConflict: "assessment_id,posture_type" });
+        if (error) throw error;
+        lastSaved.current.set(item.assessmentId, snapshot);
+      }
+    }
+    syncVersion.current += 1;
     const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw error;
-    try { localStorage.removeItem(dashboardStorageKey); setStorageError(false); }
+    try { localStorage.removeItem(dashboardStorageKey); localStorage.removeItem(pendingSyncKey); setStorageError(false); }
     catch { setStorageError(true); }
     setDashboard(createDashboardState());
+    setManagerId(null);
+    lastSaved.current.clear();
     setFilesByPerson({});
     setDemoAnswers(emptyAnswers());
     setDemoTimes(emptyTimes());

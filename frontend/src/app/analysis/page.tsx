@@ -13,5 +13,6 @@ export default function AnalysisPage() {
  {!demoMode && activeVideos.length === 0 && <p role="alert">평가할 작업 영상이 없습니다.</p>}
  <div className="analysis-actions"><Link href="/review">분석 취소 · 영상 확인으로</Link></div>
  {demoMode && <Link className="next-button" href="/confirmation">예시 추천 장면 확인하기 →</Link>}
+ {!demoMode && incomplete.length === 0 && activeVideos.length > 0 && <Link className="next-button" href="/confirmation">직접 장면 선택하기 →</Link>}
  </div></EvaluationShell>;
 }
