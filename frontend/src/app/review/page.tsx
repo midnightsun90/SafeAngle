@@ -81,7 +81,7 @@ function ReviewVideo({ number, title, onUploadingChange }: { number: VideoNumber
           aria-label={`영상 ${number} 교체 파일`}
         />
       </div>
-      {!demoMode && (file || storedVideo) && <p className="review-filename" title={file?.name ?? storedVideo?.original_filename ?? ""}>{file?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</p>}
+      {!demoMode && (file || storedVideo) && <p className="review-filename" title={file?.name ?? storedVideo?.original_filename ?? ""}>저장 완료 · {file?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</p>}
       {(error || sourceError) && <p className="review-error" role="alert">{error || sourceError}</p>}
     </section>
   );
@@ -124,7 +124,7 @@ export default function VideoReview() {
       step="02"
       stepName="영상 확인"
       title="올린 영상을 확인해주세요"
-      description="올린 영상이 맞는지 재생해 확인해주세요. 평가할 장면은 분석 후 AI가 추천합니다."
+      description="저장된 영상을 재생해 확인해주세요. 다음 화면에서 작업 조건을 입력합니다."
       wide
     >
       {demoMode && <p className="demo-disclaimer">예시 사진으로 보는 화면입니다. 실제 영상이나 분석 결과가 아닙니다.</p>}
