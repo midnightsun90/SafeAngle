@@ -2,125 +2,129 @@
 
 import Link from "next/link";
 import EvaluationShell from "@/components/EvaluationShell";
-import ScenePreview from "@/components/ScenePreview";
+import PoseScenePreview from "@/components/PoseScenePreview";
+import { usePoseAnalysis } from "@/components/PoseAnalysisProvider";
 import { useVideoFiles } from "@/components/VideoFilesProvider";
+import { angleParts } from "@/components/AngleBar";
+import { questionGroups } from "@/lib/questions";
+import { videoTitles } from "@/lib/resultData";
 import { formatVideoTime } from "@/lib/video";
-import { sampleResults, sampleRows, videoTitles } from "@/lib/resultData";
-import { tableA, tableB, tableC } from "@/lib/rebaTables";
-import type { AnswerName } from "../../../../lib/reba/types.ts";
-import type { PartName } from "../../../../lib/types.ts";
+import type { Measurement, QualityReason, TrackingWarning } from "../../../../lib/types.ts";
+import "./report.css";
 
-function ReferenceTable({ title, description, data, rowLabel, columnLabels, groupSize, groupLabels, highlight }: {
-  title: string;
-  description: string;
-  data: readonly (readonly number[])[];
-  rowLabel: string;
-  columnLabels: string[];
-  groupSize?: number;
-  groupLabels?: string[];
-  highlight?: [number, number];
-}) {
-  return (
-    <section className="report-table-section">
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <div className="report-table-scroll">
-        <table className="report-matrix">
-          <thead>
-            {groupSize && groupLabels && (
-              <tr><th scope="col" rowSpan={2}>{rowLabel}</th>{groupLabels.map((label) => <th scope="colgroup" colSpan={groupSize} key={label}>{label}</th>)}</tr>
-            )}
-            <tr>{!groupSize && <th scope="col">{rowLabel}</th>}{columnLabels.map((label, index) => <th scope="col" key={`${label}-${index}`}>{label}</th>)}</tr>
-          </thead>
-          <tbody>
-            {data.map((row, rowIndex) => (
-              <tr key={rowIndex} className={highlight?.[0] === rowIndex ? "report-row-highlight" : ""}>
-                <th scope="row">{rowIndex + 1}</th>
-                {row.map((value, columnIndex) => <td className={highlight?.[0] === rowIndex && highlight?.[1] === columnIndex ? "report-cell-highlight" : ""} key={columnIndex}>{value}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
+const reasonLabels: Record<QualityReason, string> = {
+  no_person: "사람이 보이지 않음", multiple_people: "여러 사람 감지", invalid_landmarks: "관절 위치 오류",
+  occluded: "관절이 가려짐", out_of_frame: "관절이 화면 밖에 있음", not_side_view: "측면 자세가 아님",
+  too_far: "사람이 너무 멀리 있음", invalid_geometry: "관절 각도 계산 불가", unknown_direction: "몸 방향 확인 불가",
+  missing_joint: "필요한 관절이 보이지 않음", tracking_uncertain: "사람 추적 불확실",
+};
+const warningLabels: Record<TrackingWarning, string> = {
+  tracking_gap: "사람 추적이 끊김", position_jump: "사람 위치가 갑자기 바뀜",
+  segment_length_change: "관절 사이 길이가 크게 바뀜", subject_change_suspected: "추적 대상 변경 의심",
+};
+const questions = Object.values(questionGroups).flatMap((group) => group.questions);
+
+function measurementText(measurement: Measurement | undefined) {
+  if (measurement?.status !== "measured" || measurement.value === null) return "측정 불가";
+  return `${measurement.value.toFixed(1)}°${measurement.approximate ? " · 근사값" : ""}`;
+}
+
+function measurementNote(measurement: Measurement | undefined, coverage: number | undefined) {
+  const notes = (measurement?.reasons ?? []).map((reason) => reasonLabels[reason]);
+  if (measurement?.minVisibility !== null && measurement?.minVisibility !== undefined) {
+    notes.push(`관절 가시성 ${Math.round(measurement.minVisibility * 100)}%`);
+  }
+  if (coverage !== undefined) notes.push(`영상 내 측정 가능 장면 ${Math.round(coverage * 100)}%`);
+  return notes.join(" · ");
 }
 
 export default function ReportPage() {
-  const { demoMode, confirmedScenes, resultVideo, selectedTimes, rebaResults } = useVideoFiles();
-  const sampleDetails = demoMode && confirmedScenes[resultVideo] && resultVideo === 1;
-  const real=demoMode?null:rebaResults[resultVideo];
-  const time = demoMode ? sampleResults[resultVideo].time : selectedTimes[resultVideo] !== null ? formatVideoTime(selectedTimes[resultVideo] ?? 0) : "미선택";
-  const answer = (key: AnswerName) => {
-    const field=real?.inputs[key];
-    if(!field||field.state==="unknown")return "미확인";
-    if(field.state==="unavailable")return "확인 불가";
-    if(field.state==="not_applicable")return "해당 없음";
-    return typeof field.value==="boolean"?field.value?"예":"아니요":String(field.value);
-  };
-  const points=(value:number|null|undefined)=>value==null?"미확인":String(value);
-  const labels:Record<PartName,string>={trunk:"몸통",neck:"목",knee:"다리·무릎",upperArm:"위팔",lowerArm:"아래팔",wrist:"손목"};
-  const realRows=(Object.keys(labels) as PartName[]).map(part=>{
-    const p=real?.parts[part];
-    return {item:labels[part],value:p?`${p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}${p.measurement.approximate?" (근사)":""} · 기본 ${p.source==="human"?"사람 확인":p.source==="vlm"?"GPT 좌표·사람 확인":p.source==="video"?"영상 측정":"미확인"} · ${p.evidenceIds.join(", ")} ${p.notes.join(" ")}`:"장면·입력 확인 필요",base:points(p?.base),adjustment:points(p?.adjustment),score:points(p?.score)};
-  });
-  realRows.push(
-    {item:"무게·힘",value:`사람 확인 ${answer("loadKg")} kg/kgf · 충격 ${answer("shock")}`,base:"해당 없음",adjustment:points(real?.load),score:points(real?.load)},
-    {item:"손잡이",value:real?.inputs.coupling.state==="confirmed"?`사람 확인 ${{good:"양호",fair:"보통",poor:"나쁨",unacceptable:"안전한 쥐기 불가"}[real.inputs.coupling.value]}`:answer("coupling"),base:"해당 없음",adjustment:points(real?.coupling),score:points(real?.coupling)},
-    {item:"활동",value:`사람 확인 정지 ${answer("staticMinutes")}분 · 반복 ${answer("repeatsPerMinute")}회/분 · 보행 ${answer("repetitionIsWalking")} · 변화 ${answer("rapidChange")} · 불안정 ${answer("unstable")}`,base:"해당 없음",adjustment:points(real?.activity),score:points(real?.activity)}
-  );
-  const rows = sampleDetails ? sampleRows : realRows;
-  const aHighlight: [number,number]|undefined=real?.tableA!=null?[real.parts.trunk.score!-1,(real.parts.neck.score!-1)*4+real.parts.knee.score!-1]:undefined;
-  const bHighlight: [number,number]|undefined=real?.tableB!=null?[real.parts.upperArm.score!-1,(real.parts.lowerArm.score!-1)*3+real.parts.wrist.score!-1]:undefined;
-  const cHighlight: [number,number]|undefined=real?.tableC!=null?[real.scoreA!-1,real.scoreB!-1]:undefined;
+  const { demoMode, activeEvaluation, activeVideos, storedVideos, answers, resultVideo, setResultVideo } = useVideoFiles();
+  const { results, states, retry } = usePoseAnalysis();
+  const uploadedVideos = activeVideos.filter((number) => Boolean(storedVideos[number]));
+  const selected = uploadedVideos.includes(resultVideo) ? resultVideo : uploadedVideos[0];
+  const result = selected ? results[selected] : null;
+  const state = selected ? states[selected] : null;
+  const answer = selected ? answers[selected] : null;
 
-  return (
-    <EvaluationShell step="07" stepName="상세 평가서" title="REBA 상세 평가서" wide introFull beforeIntro={<div className="report-topline">
-        <Link className="confirmation-soft-button" href="/results">← 결과 요약으로</Link>
-        {demoMode && <span className="sample-badge">시안용 예시</span>}
-      </div>}>
-      <div className="report-heading">
-        <p>영상 {resultVideo} · {videoTitles[resultVideo]} · 선택 장면 {time || "미선택"}{!demoMode && ` · ${real?real.scene.side==="left"?"왼쪽":"오른쪽":"쪽 미선택"}`}</p>
-        <div className="report-metrics">
-          <span>선택한 장면의 점수 <strong id="report-final">{sampleDetails ? "8점" : real?.final!=null?`${real.final}점`:"미확정"}</strong></span>
-          <span>위험 수준 <strong>{sampleDetails ? "높음" : real?.action?.risk??"미확정"}</strong></span>
-          <span>조치 필요성 <strong>{sampleDetails ? "곧 조치 필요" : real?.action?.action??"확인 필요"}</strong></span>
+  return <EvaluationShell step="07" stepName="상세 평가서" title="작업 자세 상세 평가서" wide introFull
+    beforeIntro={<div className="report-detail-back"><Link href="/results">← 결과 요약으로</Link></div>}>
+    <div className="report-detail">
+      <p className="report-detail-lead">{activeEvaluation?.name ?? "평가 대상자"} · 영상에서 측정한 각도와 직접 입력한 작업 조건입니다.</p>
+      <p className="report-detail-notice">각도는 선택된 한 장면의 측정값입니다. 좋음·나쁨 판정과 전체 점수는 아직 적용하지 않았습니다.</p>
+
+      {demoMode ? <div className="report-detail-empty"><p>예시 모드에는 실제 영상 분석 데이터가 없습니다.</p><Link href="/output-preview">예시 결과 보기 →</Link></div> : <>
+        <div className="report-detail-tabs" aria-label="영상 선택">
+          {uploadedVideos.map((number) => <button type="button" key={number} aria-pressed={selected === number} onClick={() => setResultVideo(number)}>
+            <strong>영상 {number} · {videoTitles[number]}</strong>
+            <span>{results[number] ? "측정 완료" : states[number]?.step === "error" ? "분석 오류" : "분석 중"}</span>
+          </button>)}
         </div>
-      </div>
-      <p className="results-disclaimer">{sampleDetails ? "아래 수치는 이미지 시안의 예시입니다. 실제 영상 분석 결과가 아닙니다." : demoMode ? "이 영상의 상세 항목 예시는 제공되지 않았습니다. 아래 표는 기준표이며 점수는 계산하지 않았습니다." : "같은 영상·장면·쪽의 원본 측정과 사람 확인만 사용합니다. 확인 전에는 최종 점수를 내지 않습니다. 법적 부담작업 해당 여부는 미확인, 유해요인조사 전체는 미완료입니다."}</p>
-      {real&&real.final===null&&<p className="result-note">필수 확인 {real.pending.length}개가 남았습니다. 영상 평가 화면에서 현장 조건과 보이는 부위를 확인하십시오.</p>}
 
-      {real?.evidence&&<section className="report-table-section" aria-label="GPT 관절 근거"><h2>대표 장면과 관절 확인 기록</h2>
-        <p>{real.evidence.provenance.model} · {real.evidence.provenance.promptVersion} · {real.scene.timeSec.toFixed(2)}초 · {real.scene.side==="left"?"왼쪽":"오른쪽"}. 좌표는 이미지의 왼쪽 위를 기준으로 한 비율이며, 각도는 확인 후 코드로 계산했습니다.</p>
-        {real.evidence.imageDataUrl ? <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/> : <ScenePreview number={resultVideo} />}
-        <div className="report-table-scroll"><table className="report-item-table"><thead><tr><th>관절</th><th>GPT 원 제안 (x, y)</th><th>사람 확인·수정 (x, y)</th></tr></thead><tbody>{Object.entries(real.evidence.reviewedPoints).map(([name,p])=>{const before=real.evidence!.originalPoints[name as keyof typeof real.evidence.originalPoints];const format=(point:typeof p)=>point?`${point.x.toFixed(4)}, ${point.y.toFixed(4)}`:"관측 불가";return <tr key={name}><th>{name}</th><td>{format(before)}</td><td>{format(p)}</td></tr>;})}</tbody></table></div>
-      </section>}
+        {!selected && <div className="report-detail-empty"><p>등록된 영상이 없습니다.</p><Link href="/upload/1">영상 올리기 →</Link></div>}
+        {selected && <>
+          <div className="report-detail-heading">
+            <div><span>영상 {selected}</span><h2>{videoTitles[selected]}</h2></div>
+            {result && <p>{result.selectionSource === "automatic" ? "자동 선택" : "직접 선택"} · {result.timeSec === null ? "대표 장면 없음" : formatVideoTime(result.timeSec)}</p>}
+          </div>
 
-      <section className="report-items" aria-labelledby="report-items-title">
-        <h2 id="report-items-title">항목별 판정 요약</h2>
-        <div className="report-table-scroll">
-          <table className="report-item-table">
-            <thead><tr><th scope="col">항목</th><th scope="col">측정값 · 확인값</th><th scope="col">기본점수</th><th scope="col">보정</th><th scope="col">항목점수</th></tr></thead>
-            <tbody>{rows.map((row) => <tr key={row.item}><th scope="row">{row.item}</th><td>{row.value}</td><td>{row.base}</td><td>{row.adjustment}</td><td>{row.score}</td></tr>)}</tbody>
-          </table>
-        </div>
-        <p>선택 장면과 사람이 확인한 값을 함께 기록합니다. 미확인·미측정 항목은 점수로 바꾸지 않습니다.</p>
-      </section>
+          {state?.step === "error" && <div className="report-detail-empty" role="alert"><p>분석 오류: {state.message}</p><button type="button" onClick={() => retry(selected)}>다시 분석</button></div>}
+          {!result && state?.step !== "error" && <p className="report-detail-empty" role="status">영상을 분석하고 있습니다. {state?.progress ?? 0}%</p>}
 
-      <section className="report-calculation" aria-label="전체 평가표와 계산 과정">
-        <h2>전체 평가표와 계산 과정</h2>
-        <p>표 A·B·C의 전체 값을 표시합니다. {sampleDetails ? "주황색 칸은 시안 예시의 경로입니다." : "확인된 부위·그룹 점수의 조회 칸만 표시합니다."}</p>
-        <ReferenceTable title="Table A · 몸통 × 목·다리" description={sampleDetails ? "몸통 3 · 목 1 · 다리 2 → 선택 값 4" : `몸통 ${points(real?.parts.trunk.score)} · 목 ${points(real?.parts.neck.score)} · 다리 ${points(real?.parts.knee.score)} → ${points(real?.tableA)}`} data={tableA} rowLabel="몸통" columnLabels={Array.from({ length: 12 }, (_, index) => `다리 ${index % 4 + 1}`)} groupSize={4} groupLabels={["목 1", "목 2", "목 3"]} highlight={sampleDetails ? [2, 1] : aHighlight} />
-        <ReferenceTable title="Table B · 위팔 × 아래팔·손목" description={sampleDetails ? "위팔 3 · 아래팔 1 · 손목 3 → 선택 값 5" : `위팔 ${points(real?.parts.upperArm.score)} · 아래팔 ${points(real?.parts.lowerArm.score)} · 손목 ${points(real?.parts.wrist.score)} → ${points(real?.tableB)}`} data={tableB} rowLabel="위팔" columnLabels={Array.from({ length: 6 }, (_, index) => `손목 ${index % 3 + 1}`)} groupSize={3} groupLabels={["아래팔 1", "아래팔 2"]} highlight={sampleDetails ? [2, 2] : bHighlight} />
-        <ReferenceTable title="Table C · 점수 A × 점수 B" description={sampleDetails ? "점수 A 5 · 점수 B 6 → 선택 값 7" : `점수 A ${points(real?.scoreA)} · 점수 B ${points(real?.scoreB)} → ${points(real?.tableC)}`} data={tableC} rowLabel="점수 A ＼ 점수 B" columnLabels={Array.from({ length: 12 }, (_, index) => String(index + 1))} highlight={sampleDetails ? [4, 5] : cHighlight} />
-        <div className="report-formula">
-          <div><strong>점수 A</strong><p>{sampleDetails ? "Table A 4 + 무게·힘 1 → 5" : `표 A ${points(real?.tableA)} + 무게·힘 ${points(real?.load)} → ${points(real?.scoreA)}`}</p></div>
-          <div><strong>점수 B</strong><p>{sampleDetails ? "Table B 5 + 손잡이 1 → 6" : `표 B ${points(real?.tableB)} + 손잡이 ${points(real?.coupling)} → ${points(real?.scoreB)}`}</p></div>
-          <div><strong>최종 점수</strong><p>{sampleDetails ? "Table C 7 + 활동 1 → 8점" : `표 C ${points(real?.tableC)} + 활동 ${points(real?.activity)} → ${points(real?.final)}`}</p></div>
-        </div>
-        {sampleDetails && <p className="report-risk">위험 수준: <strong>높음</strong> · 곧 조치 필요</p>}
-        <p className="report-source">표 숫자와 조치 수준: <Link href="https://github.com/midnightsun90/SafeAngle/blob/main/docs/evaluation-axes.md">프로젝트 평가축 문서</Link></p>
-      </section>
-    </EvaluationShell>
-  );
+          {result && <>
+            {result.timeSec !== null && <section className="report-detail-section">
+              <div className="report-detail-section-title"><span>01</span><h3>측정 장면</h3></div>
+              <div className="report-detail-scene"><PoseScenePreview number={selected} timeSec={result.timeSec} /></div>
+            </section>}
+
+            <section className="report-detail-section">
+              <div className="report-detail-section-title"><span>02</span><h3>부위별 측정값</h3></div>
+              <p className="report-detail-section-copy">사람 기준 왼쪽과 오른쪽을 모두 표시합니다. 측정 불가 항목은 점수로 바꾸지 않습니다.</p>
+              <div className="report-detail-measurements">
+                <div className="report-detail-measurement-head"><span>부위</span><span>왼쪽</span><span>오른쪽</span></div>
+                {angleParts.map((part) => <div className="report-detail-measurement" key={part.key}>
+                  <div className="report-detail-part"><strong>{part.label}</strong><small>{part.note}</small></div>
+                  {(["left", "right"] as const).map((side) => {
+                    const measurement = result.measurements?.[side]?.[part.key];
+                    const note = measurementNote(measurement, result.quality.measurementCoverage?.[side]?.[part.key]);
+                    return <div className="report-detail-reading" key={side}>
+                      <strong>{measurementText(measurement)}</strong>
+                      {note && <small>{note}</small>}
+                    </div>;
+                  })}
+                </div>)}
+              </div>
+            </section>
+
+            <section className="report-detail-section">
+              <div className="report-detail-section-title"><span>03</span><h3>측정 상태</h3></div>
+              <dl className="report-detail-facts">
+                <div><dt>영상 상태</dt><dd>{result.quality.videoStatus === "ready" ? "측정 가능" : result.quality.videoStatus === "partial" ? "일부 측정" : "재촬영 확인 필요"}</dd></div>
+                <div><dt>선택 장면</dt><dd>{result.quality.frameStatus === "complete" ? "모든 부위 측정" : result.quality.frameStatus === "partial" ? "일부 부위 측정" : result.quality.frameStatus === "unusable" ? "측정 불가" : "대표 장면 없음"}</dd></div>
+                <div><dt>측정된 장면 비율</dt><dd>{Math.round(result.quality.measuredFrameRatio * 100)}%</dd></div>
+                <div><dt>선택 장면의 사람 수</dt><dd>{result.quality.personCount === null ? "확인 불가" : `${result.quality.personCount}명`}</dd></div>
+                <div><dt>영상 길이</dt><dd>{result.quality.durationSec.toFixed(1)}초</dd></div>
+                <div><dt>분석 간격</dt><dd>{result.quality.sampleIntervalSec.toFixed(1)}초</dd></div>
+                <div><dt>수동 확인 필요</dt><dd>{result.quality.requiresReview ? "필요" : "없음"}</dd></div>
+                <div><dt>측정 제한 사유</dt><dd>{result.quality.reasons.length ? result.quality.reasons.map((reason) => reasonLabels[reason]).join(" · ") : "없음"}</dd></div>
+                <div><dt>사람 추적 알림</dt><dd>{result.quality.trackingWarnings.length ? result.quality.trackingWarnings.map((warning) => warningLabels[warning]).join(" · ") : "없음"}</dd></div>
+              </dl>
+            </section>
+
+            <section className="report-detail-section">
+              <div className="report-detail-section-title"><span>04</span><h3>직접 입력한 작업 조건</h3></div>
+              <dl className="report-detail-answers">{questions.map((question) => <div key={question.key}>
+                <dt>{question.label}</dt><dd>{question.options.find((option) => option.value === answer?.[question.key])?.label ?? "미입력"}</dd>
+              </div>)}</dl>
+            </section>
+
+            <section className="report-detail-section report-detail-metadata">
+              <div className="report-detail-section-title"><span>05</span><h3>분석 기록</h3></div>
+              <p>모델 {result.modelVersion} · 분석 시각 {new Date(result.analyzedAt).toLocaleString("ko-KR")}</p>
+            </section>
+          </>}
+        </>}
+      </>}
+    </div>
+  </EvaluationShell>;
 }
