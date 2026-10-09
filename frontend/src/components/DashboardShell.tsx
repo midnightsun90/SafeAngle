@@ -8,7 +8,7 @@ import { useVideoFiles } from "@/components/VideoFilesProvider";
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
+  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -21,7 +21,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const needsName = ready && !dashboard.evaluatorName && !demoMode;
   const modalOpen = needsName || creating;
-  const needsVideoAgain = activeEvaluation && ([1, 2, 3] as const).some((number) => activeEvaluation.fileKeys[number] && !files[number]);
+  const needsVideoAgain = activeEvaluation && ([1, 2, 3] as const).some((number) => activeEvaluation.fileKeys[number] && !files[number] && !storedVideos[number]);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
   useEffect(() => { if (modalOpen) inputRef.current?.focus(); }, [modalOpen, needsName]);
