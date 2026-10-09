@@ -73,7 +73,7 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
           ))}
         </div>
         <div className="question-footer">
-          <p>확인 불가 답변은 임의의 값으로 바꾸지 않고 그대로 기록합니다.</p>
+          <p>확인 불가는 0점으로 처리하지 않습니다. 해당 장면은 확정 점수를 낼 수 없습니다.</p>
           {error && <p className="form-status form-status-error" role="alert">{error}</p>}
           <button className="next-button" type="submit">{groupNumber === 4 && !nextVideo ? "분석 진행 화면으로" : "다음 질문으로"}<span aria-hidden="true">→</span></button>
           {demoMode && <Link className="demo-skip" href="/analysis">예시 분석 화면 바로 보기</Link>}

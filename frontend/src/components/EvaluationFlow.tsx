@@ -39,7 +39,7 @@ function SelectQuestion({name,label,field,options,change,allowNA=false}:{name:st
   const value=field.state==="confirmed"?String(field.value):field.state==="unknown"?"":field.state;
   return <label className="sa-question"><span>{label}</span><select name={name} aria-label={label} value={value} onChange={e=>change(e.target.value)}>
     <option value="">미확인</option>{options.map(([v,l])=><option key={String(v)} value={String(v)}>{l}</option>)}
-    {allowNA&&<option value="not_applicable">해당 없음: 잡거나 지지하는 물체가 없음</option>}
+    {allowNA&&<option value="not_applicable">해당 없음: 잡거나 지지하는 물체가 없음 (+0)</option>}
     <option value="unavailable">확인 불가</option></select></label>;
 }
 function NumericQuestion({name,label,field,max,change}:{name:string;label:string;field:Confirmation<number>;max:number;change:(v:string)=>void}){
@@ -54,10 +54,10 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
   const identity=videos.map(v=>v.id).join("|");
   const [active,setActive]=useState(0),[busy,setBusy]=useState(false);
   useEffect(()=>{setActive(0);setBusy(false);onStage(3);},[identity,activeEvaluation?.id,onStage]);
-  return <section className="sa-evaluation" aria-label="작업 영상 자세 측정">
+  return <section className="sa-evaluation" aria-label="작업 영상 REBA 평가">
     <div className="sa-form-card" id="evaluation-videos"><h2>평가할 영상</h2><p>같은 장면의 목·팔·다리를 함께 평가합니다. 원본 영상은 기존 업로드 단계에서 비공개 저장소에 보관하고, 동의한 대표 장면 한 장만 GPT로 전송합니다.</p>
       <Link className="confirmation-soft-button" href="/upload/1">영상 등록·교체 (각 60초·50MB 이내)</Link>
-      <p className="sa-muted">측면에서 한 사람의 전신과 손목을 담아 주세요. 새로고침한 뒤에는 저장된 영상의 장면을 다시 분석할 수 있습니다.</p>
+      <p className="sa-muted">측면에서 한 사람의 전신과 손목을 담아 주세요. 좌표와 점수는 이 탭에서만 유지됩니다. 새로고침한 뒤에는 저장된 영상의 장면을 다시 분석하십시오.</p>
       {!!videos.length&&<div className="sa-video-tabs" role="tablist" aria-label="영상별 평가">{videos.map((v,i)=><button type="button" role="tab" aria-selected={active===i} key={v.id} disabled={busy} onClick={()=>{setActive(i);onStage(3);}}>영상 {v.number} · {v.name}</button>)}</div>}
     </div>
     {videos.map((v,i)=><div key={v.id} hidden={i!==active} data-video-active={i===active}><VideoEvaluation number={v.number} file={v.file} videoId={v.id} active={i===active} onBusy={setBusy} onStage={onStage}/></div>)}
@@ -79,17 +79,13 @@ function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:Vid
   const [proposal,setProposal]=useState<VlmProposal|null>(null),[points,setPoints]=useState<VlmPoints|null>(null),[coords,setCoords]=useState<Coordinates|null>(null),[joint,setJoint]=useState<VlmJoint>("shoulder");
   const [image,setImage]=useState(""),[evidence,setEvidence]=useState<VlmEvidence|null>(null),[answers,setAnswers]=useState<RebaAnswers|null>(null);
   const controller=useRef<AbortController|null>(null),runId=useRef(0),revision=useRef(0),video=useRef<HTMLVideoElement>(null);
-  const publishedResult=useRef(false);
   useEffect(()=>()=>{runId.current++;controller.current?.abort();},[videoId]);
   const scene=useMemo(()=>evidence?sceneFromVlm(evidence):null,[evidence]);
   const {score,scoreError}=useMemo(()=>{try{return {score:scene&&answers?scorePostureScene(scene,answers):null,scoreError:""};}catch(e){return {score:null,scoreError:e instanceof Error?e.message:String(e)};}},[scene,answers]);
-  useEffect(()=>{
-    if(score){publishedResult.current=true;publishResult(number,score);}
-    else if(publishedResult.current){publishedResult.current=false;publishResult(number,null);}
-  },[number,score,publishResult]);
+  useEffect(()=>publishResult(number,score),[number,score,publishResult]);
   useEffect(()=>{if(active&&answers)onStage(score?.status==="complete"?6:4);},[active,answers,score?.status,onStage]);
-  function invalidate(){controller.current?.abort();revision.current++;publishResult(number,null);setProposal(null);setPoints(null);setCoords(null);setImage("");setEvidence(null);setAnswers(null);setReviewChecked(false);setPhase("대표 장면 선택");setError("");onStage(3);}
-  function clearConfirmation(){publishResult(number,null);setEvidence(null);setAnswers(null);setReviewChecked(false);setError("");onStage(3);}
+  function invalidate(){controller.current?.abort();revision.current++;setProposal(null);setPoints(null);setCoords(null);setImage("");setEvidence(null);setAnswers(null);setReviewChecked(false);setPhase("대표 장면 선택");setError("");onStage(3);}
+  function clearConfirmation(){setEvidence(null);setAnswers(null);setReviewChecked(false);setError("");onStage(3);}
   function editPoint(name:VlmJoint,point:VlmPoints[VlmJoint]){setPoints(old=>old?{...old,[name]:point}:old);clearConfirmation();}
   function coordinate(name:VlmJoint,axis:"x"|"y",value:string){
     if(!coords)return;const next={...coords[name],[axis]:value};setCoords({...coords,[name]:next});
@@ -164,21 +160,23 @@ function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:Vid
       <fieldset><legend>Q2 · 실제 하중·힘</legend><p className="sa-muted">밀기·당기기는 물체 무게가 아닌 실제 가한 힘을 확인합니다. 힘은 kgf 상당값으로 입력하십시오.</p><div className="sa-question-grid">
         <NumericQuestion name="loadKg" label="확인한 무게(kg) 또는 가한 힘(kgf)" field={answers.fields.loadKg} max={100000} change={v=>chooseField("loadKg",v,Number)}/>{bool("shock","충격 또는 급격한 힘 증가가 있었나요?")}
       </div></fieldset>
-      <fieldset><legend>Q3 · 손잡이·결합 상태</legend><SelectQuestion name="coupling" label="물체를 얼마나 안정적으로 잡거나 지지했나요?" field={answers.fields.coupling} allowNA options={[["good","양호: 안정적인 손잡이·쥐기"],["fair","보통: 사용 가능하지만 이상적이지 않음"],["poor","나쁨: 쥘 수 있으나 불량"],["unacceptable","불가: 물체는 있는데 손잡이가 없거나 안전한 쥐기 불가"]]} change={v=>chooseField("coupling",v,x=>x as AnswerValues["coupling"])}/></fieldset>
+      <fieldset><legend>Q3 · 손잡이·결합 상태</legend><SelectQuestion name="coupling" label="물체를 얼마나 안정적으로 잡거나 지지했나요?" field={answers.fields.coupling} allowNA options={[["good","양호: 안정적인 손잡이·쥐기 (+0)"],["fair","보통: 사용 가능하지만 이상적이지 않음 (+1)"],["poor","나쁨: 쥘 수 있으나 불량 (+2)"],["unacceptable","불가: 물체는 있는데 손잡이가 없거나 안전한 쥐기 불가 (+3)"]]} change={v=>chooseField("coupling",v,x=>x as AnswerValues["coupling"])}/></fieldset>
       <fieldset><legend>Q4 · 실제 작업의 활동 조건</legend><p className="sa-muted">60초 이하 영상만으로 1분 초과 정지를 입증할 수 없습니다. 실제 작업 조건을 확인하십시오. 지지면 불안정은 Q1 값을 한 번만 사용합니다.</p><div className="sa-question-grid">
         <NumericQuestion name="staticMinutes" label="한 부위 이상 같은 자세를 유지한 시간(분)" field={answers.fields.staticMinutes} max={1440} change={v=>chooseField("staticMinutes",v,Number)}/>
         <NumericQuestion name="repeatsPerMinute" label="작은 동작의 분당 반복 횟수" field={answers.fields.repeatsPerMinute} max={100000} change={v=>chooseField("repeatsPerMinute",v,Number)}/>
         {bool("repetitionIsWalking","기록한 반복은 보행 동작인가요?")}{bool("rapidChange","자세가 빠르고 크게 바뀌었나요?")}
       </div></fieldset>
     </section>}
-    {(score||scoreError)&&<section className="sa-form-card" id={activeId("measurement-result")} aria-label="측정 결과">
-      <div className="sa-score-header"><div><span className="sa-eyebrow">선택 장면 · {scene?.key.timeSec.toFixed(2)}초 · {side==="left"?"왼쪽":"오른쪽"}</span><h2>측정 결과</h2></div></div>
+    {(score||scoreError)&&<section className="sa-form-card" id={activeId("reba-result")} aria-label="REBA 결과">
+      <div className="sa-score-header"><div><span className="sa-eyebrow">선택 장면 · {scene?.key.timeSec.toFixed(2)}초 · {side==="left"?"왼쪽":"오른쪽"}</span><h2>REBA 결과</h2></div><strong id={activeId("reba-final")} data-score={score?.final??""}>{score?.final===null||!score?"확정 점수 없음":`${score.final}점`}</strong></div>
       {scoreError&&<p role="alert" className="sa-error">{scoreError}</p>}
       {score&&<>
-        <p role="status">선택한 쪽의 관절 좌표를 사람이 확인한 뒤 계산한 각도입니다. 영상 전체의 위험도를 판정하지 않습니다.</p>
-        {!!score.pending.length&&<details open><summary>남은 확인 항목 ({score.pending.length})</summary><ul>{score.pending.map(p=><li key={p.field}>{QUESTION_LABELS[p.field]??p.field}: {p.reason}</li>)}</ul></details>}
-        <div className="sa-table-scroll"><table><caption>부위별 원본 각도와 측정 제한 사유</caption><thead><tr><th>부위</th><th>측정 각도</th><th>근사값</th><th>측정 상태</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=>{const m=score.parts[part].measurement;return <tr key={part}><th>{LABELS[part]}</th><td>{m.value===null?"측정 불가":m.value.toFixed(1)+"°"}</td><td>{m.approximate?"예":"아니요"}</td><td>{m.reasons.length?m.reasons.map(reason=>REASONS[reason]??reason).join(" · "):"측정됨"}</td></tr>;})}</tbody></table></div>
-        <p className="sa-muted">각도만 표시합니다. 좋음·나쁨 판정과 전체 점수는 적용하지 않았습니다.</p>
+        <p id={activeId("reba-action")} role="status">{score.action?`조치 수준 ${score.action.level} · ${score.action.risk} · ${score.action.action}`:`${score.status==="unavailable"?"현장 확인·재촬영 필요":"확인 질문을 완료하십시오"}. 미확인 ${score.pending.length}개`}</p>
+        {!!score.pending.length&&<details open><summary>남은 확인 항목 ({score.pending.length})</summary><ul id={activeId("reba-pending")}>{score.pending.map(p=><li key={p.field}>{QUESTION_LABELS[p.field]??p.field}: {p.reason}</li>)}</ul></details>}
+        <div className="sa-table-scroll"><table id={activeId("reba-evidence")}><caption>부위별 근거, 원본 측정과 사람 확인을 구별합니다.</caption><thead><tr><th>부위</th><th>원본 각도</th><th>기본</th><th>가감</th><th>부위 점수</th><th>입력 출처·근거</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=>{const p=score.parts[part];return <tr key={part}><th>{LABELS[part]}</th><td>{p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}</td><td>{p.base??"미확인"}</td><td>{p.adjustment??"미확인"}</td><td>{p.score??"미확인"}</td><td>{p.source==="vlm"?"GPT 좌표·사람 확인":p.source==="video"?"영상 측정":p.source==="human"?"사람 확인":"미확인"} · {p.evidenceIds.join(", ")}<small>{p.notes.join(" ")}</small></td></tr>;})}</tbody></table></div>
+        <p id={activeId("reba-calculation")}>표 A {score.tableA??"?"} + 하중·충격 {score.load??"?"} = A {score.scoreA??"?"} / 표 B {score.tableB??"?"} + 손잡이 {score.coupling??"?"} = B {score.scoreB??"?"} / 표 C {score.tableC??"?"} + 활동 {score.activity??"?"} = {score.final??"미확정"}</p>
+        {score.activityBreakdown&&<p>활동 근거: 1분 초과 정지 +{score.activityBreakdown.static}, 분당 4회 초과 반복(보행 제외) +{score.activityBreakdown.repeated}, 빠른 변화 또는 불안정 지지 +{score.activityBreakdown.rapidOrUnstable}</p>}
+        <p className="sa-muted">법적 부담작업 해당 여부: 미확인. 유해요인조사 전체: 미완료. REBA는 선택 장면의 자세 평가이며 법적 조사 완료를 뜻하지 않습니다.</p>
       </>}
     </section>}
   </>;
