@@ -9,10 +9,14 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "prepare:pose": "node scripts/prepare-pose.mjs"
+    "prepare:pose": "node scripts/prepare-pose.mjs",
+    "engine:dev": "node scripts/dev-engine.mjs",
+    "prepare:fixtures": "node scripts/prepare-fixtures.mjs",
+    "engine:verify": "node scripts/verify-browser.cjs"
   },
   "devDependencies": {
     "@types/node": "24.19.1",
+    "playwright": "1.62.1",
     "typescript": "7.0.2"
   },
   "dependencies": {

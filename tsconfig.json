@@ -20,6 +20,7 @@
   },
   "include": [
     "lib/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "dev/**/*.ts"
   ]
 }
