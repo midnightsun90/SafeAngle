@@ -11,7 +11,7 @@ export default function AnalysisPage() {
  const incomplete = activeVideos.filter(n => !files[n] || workQuestionKeys.some(k => !answers[n][k]));
  if(!demoMode&&!activeEvaluation)return <EvaluationShell step="04" stepName="대표 장면 평가" title="평가 대상자를 먼저 선택하십시오"><Link className="confirmation-soft-button" href="/">대상자 목록으로 →</Link></EvaluationShell>;
  if(!demoMode)return <EvaluationShell step={stage===6?"06":stage>=4?"05":"04"} stepName="대표 장면 평가" title="대표 장면의 관절을 확인합니다">
- <EvaluationFlow onStage={setStage}/><Link className="next-button sa-next" href="/report">상세 평가서 / PDF 저장 →</Link>
+ <EvaluationFlow onStage={setStage}/><Link className="next-button sa-next" href="/results">측정 결과 보기 →</Link>
  </EvaluationShell>;
  return <EvaluationShell step="04" stepName="자세 분석" title={demoMode ? "자세 분석 · 예시 화면" : "분석을 준비하고 있습니다"} description="영상에서 자세를 측정하고 평가할 장면 후보를 찾습니다. 분석이 끝나면 추천 장면과 이유를 확인할 수 있습니다.">
  <div className="analysis-content"><div className="analysis-notice" role="status"><strong>{demoMode ? "예시 화면" : "분석 엔진 연결 대기"}</strong><p>{demoMode ? "실제 분석을 수행하지 않습니다. 다음 화면에서 추천 장면 확인 흐름을 체험할 수 있습니다." : "영상 분석·장면 추천 엔진이 아직 연결되지 않았습니다. 분석 결과를 받기 전에는 추천 장면이나 점수를 표시하지 않습니다."}</p></div>

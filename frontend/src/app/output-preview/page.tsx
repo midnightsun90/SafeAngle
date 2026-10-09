@@ -157,12 +157,10 @@ const videos: ExampleVideo[] = [
 
 export default function OutputPreviewPage() {
   const [videoNumber, setVideoNumber] = useState<1 | 2 | 3>(1);
-  const [side, setSide] = useState<Side>(videos[0].side);
   const video = videos.find((item) => item.number === videoNumber)!;
 
   function selectVideo(next: ExampleVideo) {
     setVideoNumber(next.number);
-    setSide(next.side);
   }
 
   return (
@@ -177,7 +175,7 @@ export default function OutputPreviewPage() {
         <h1>작업 자세 측정 결과</h1>
         <p className="output-preview-lead">영상마다 선택한 한 장면의 각도와 사람이 확인한 작업 조건을 보여줍니다.</p>
         <div className="output-preview-notice" role="note">
-          이 화면의 숫자와 좋음·나쁨 표시는 가상 예시입니다. 실제 결과 화면에는 영상에서 측정한 각도가 표시되며, 항목별 좋음·나쁨 판정은 아직 적용하지 않았습니다.
+          이 화면의 각도는 가상 예시입니다. 실제 결과는 GPT가 제안하고 사람이 확인한 한쪽 관절의 각도만 표시합니다. 좋음·나쁨 판정은 아직 적용하지 않았습니다.
         </div>
 
         <section className="output-preview-section" aria-labelledby="output-preview-video-heading">
@@ -203,24 +201,19 @@ export default function OutputPreviewPage() {
               <p>영상 0{video.number} / 선택 장면 {video.time}</p>
               <h2 id="output-preview-detail-heading">{video.title}</h2>
             </div>
-            <div className="output-preview-side" aria-label="측정값 좌우 선택">
-              <button type="button" aria-pressed={side === "left"} onClick={() => setSide("left")}>왼쪽</button>
-              <button type="button" aria-pressed={side === "right"} onClick={() => setSide("right")}>오른쪽</button>
-            </div>
           </div>
-          <p className="output-preview-side-note">사람 기준 {side === "left" ? "왼쪽" : "오른쪽"} 측정값 · 같은 장면의 값만 표시</p>
+          <p className="output-preview-side-note">사람 기준 {video.side === "left" ? "왼쪽" : "오른쪽"} 측정값 · 같은 장면의 값만 표시</p>
 
           <div className="output-preview-table-scroll">
             <table className="output-preview-table">
-              <thead><tr><th scope="col">측정 항목</th><th scope="col">각도 위치</th><th scope="col">엔진 출력 예시</th><th scope="col">판정 예시</th></tr></thead>
+              <thead><tr><th scope="col">측정 항목</th><th scope="col">각도 위치</th><th scope="col">각도 예시</th></tr></thead>
               <tbody>
                 {video.measurements.map((item) => {
-                  const reading = item[side];
+                  const reading = item[video.side];
                   return <tr key={item.name}>
                     <th scope="row"><strong>{item.name}</strong><small>{item.note}</small></th>
                     <td><AngleBar value={reading.value} min={angleParts.find((part) => part.label === item.name)?.min ?? 0} max={angleParts.find((part) => part.label === item.name)?.max ?? 180} /></td>
                     <td className="output-preview-value">{reading.value === null ? "측정 불가" : `${reading.value}°`}</td>
-                    <td><span className={`output-preview-judgment output-preview-judgment-${reading.judgment === "좋음" ? "good" : reading.judgment === "나쁨" ? "bad" : "review"}`}>{reading.judgment}</span></td>
                   </tr>;
                 })}
               </tbody>
@@ -228,8 +221,8 @@ export default function OutputPreviewPage() {
           </div>
 
           <section className="output-preview-quality" aria-labelledby="output-preview-quality-heading">
-            <div className="output-preview-section-heading"><h3 id="output-preview-quality-heading">영상·측정 상태</h3><span>자세 판정이 아닌 측정 정보</span></div>
-            <dl>{video.quality.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
+            <div className="output-preview-section-heading"><h3 id="output-preview-quality-heading">측정 상태</h3><span>대표 장면 한 장 기준</span></div>
+            <dl><div><dt>선택 장면</dt><dd>{video.time}</dd></div><div><dt>확인한 쪽</dt><dd>{video.side === "left" ? "왼쪽" : "오른쪽"}</dd></div><div><dt>각도 측정</dt><dd>{video.measurements.filter((item) => item[video.side].value !== null).length} / 6개 부위</dd></div></dl>
           </section>
 
           <div className="output-preview-bottom">
@@ -242,7 +235,7 @@ export default function OutputPreviewPage() {
             <section aria-labelledby="output-preview-check-heading">
               <h3 id="output-preview-check-heading">확인할 항목</h3>
               <p>{video.unresolved}</p>
-              <small>측정 불가와 확인 불가는 0° 또는 좋음으로 바꾸지 않습니다.</small>
+              <small>측정 불가와 확인 불가는 0°로 바꾸지 않습니다.</small>
             </section>
           </div>
         </section>
