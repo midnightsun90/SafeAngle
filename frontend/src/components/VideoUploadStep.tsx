@@ -7,6 +7,7 @@ import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider
 import { formatVideoTime } from "@/lib/video";
 import { validateVideoFile } from "@/lib/videoStorage";
 import { filmingNotice, uploadCopy } from "@/lib/uploadCopy";
+import "./upload-status.css";
 
 
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
@@ -21,12 +22,14 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   const [hasError, setHasError] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const displayFile = pendingFile ?? selectedFile;
 
   useEffect(() => {
-    if (!selectedFile) return;
+    if (!displayFile) return;
 
     const video = document.createElement("video");
-    const url = URL.createObjectURL(selectedFile);
+    const url = URL.createObjectURL(displayFile);
     video.preload = "metadata";
     video.onloadedmetadata = () => {
       setDuration(Number.isFinite(video.duration) ? formatVideoTime(video.duration) : "길이 확인 불가");
@@ -41,9 +44,9 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
       video.load();
       URL.revokeObjectURL(url);
     };
-  }, [selectedFile]);
+  }, [displayFile]);
 
-  async function selectFile(file: File | undefined) {
+  function selectFile(file: File | undefined) {
     if (!file) return;
     const validationError = validateVideoFile(file);
     if (validationError) {
@@ -51,24 +54,15 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
       setHasError(true);
       return;
     }
-    setUploading(true);
+    setPendingFile(file);
+    setDuration(null);
     setProgress(0);
-    setMessage("영상을 업로드하고 있습니다.");
+    setMessage("");
     setHasError(false);
-    try {
-      await setFile(number, file, setProgress);
-      setDuration(null);
-      setMessage("영상이 저장됐습니다.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "영상을 저장하지 못했습니다. 다시 시도해 주세요.");
-      setHasError(true);
-    } finally {
-      setUploading(false);
-    }
   }
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
-    void selectFile(event.target.files?.[0]);
+    selectFile(event.target.files?.[0]);
     event.target.value = "";
   }
 
@@ -76,19 +70,35 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     event.preventDefault();
     setIsDragging(false);
     if (uploading) return;
-    void selectFile(event.dataTransfer.files[0]);
+    selectFile(event.dataTransfer.files[0]);
   }
 
-  function handleNext() {
+  async function handleNext() {
     if (uploading) return;
-    if (!selectedFile && !storedVideo) {
+    if (!pendingFile && !selectedFile && !storedVideo) {
       setMessage(`영상 ${number} 파일을 먼저 선택해 주세요.`);
       setHasError(true);
       return;
     }
 
+    if (pendingFile) {
+      setUploading(true);
+      setProgress(0);
+      setMessage("");
+      setHasError(false);
+      try {
+        await setFile(number, pendingFile, setProgress);
+        setPendingFile(null);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "영상을 저장하지 못했습니다. 다시 시도해 주세요.");
+        setHasError(true);
+        setUploading(false);
+        return;
+      }
+    }
+
     if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/")) {
-      const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index] || storedVideos[index]));
+      const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index] || storedVideos[index]) || (index === number && Boolean(pendingFile)));
       const beforeSceneSelection = activeEvaluation.lastPath.startsWith("/questions/") || ["/review", "/analysis", "/confirmation"].includes(activeEvaluation.lastPath);
       const readyToResume = beforeSceneSelection || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
       if (allFilesReady && readyToResume) { router.push(activeEvaluation.lastPath); return; }
@@ -106,28 +116,29 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
         </div>
 
         <label
-          className={`upload-zone${selectedFile || storedVideo ? " upload-zone-filled" : ""}${isDragging ? " upload-zone-dragging" : ""}`}
+          className={`upload-zone${displayFile || storedVideo ? " upload-zone-filled" : ""}${isDragging ? " upload-zone-dragging" : ""}`}
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
           <input className="upload-file-input" type="file" accept="video/*,.mov,.mp4,.webm,.m4v" onChange={handleInputChange} aria-label={`영상 ${number} 선택`} disabled={uploading} />
           <span className="upload-plus" aria-hidden="true">+</span>
-          <span className="upload-title">{selectedFile || storedVideo ? `영상 ${number} 교체` : `영상 ${number} 선택`}</span>
+          <span className="upload-title">{displayFile || storedVideo ? `영상 ${number} 교체` : `영상 ${number} 선택`}</span>
           <span className="upload-hint">영상 파일 선택 · 최대 50MB</span>
         </label>
 
-        {(selectedFile || storedVideo) && (
+        {(displayFile || storedVideo) && (
           <p className="selected-video" aria-live="polite">
-            <span className="selected-video-name">{selectedFile?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</span>
+            <span className="selected-video-name">{displayFile?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</span>
             <span>{duration ?? (storedVideo?.duration_seconds != null ? formatVideoTime(storedVideo.duration_seconds) : "길이 확인 불가")}</span>
           </p>
         )}
-        {uploading && <p className="form-status" role="status">업로드 중 {progress}%</p>}
+        {(displayFile || storedVideo) && <p className="upload-state" role="status">{uploading ? `저장 중 · ${progress}%` : pendingFile ? "선택됨 · 다음을 누르면 저장" : "저장 완료"}</p>}
+        {uploading && <div className="upload-progress" role="progressbar" aria-label="영상 업로드" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div>}
 
         <p className="shooting-note">{config.note}</p>
 
-        <button className="next-button" type="button" onClick={handleNext} disabled={uploading}>{config.nextLabel} <span aria-hidden="true">→</span></button>
+        <button className="next-button" type="button" onClick={() => { void handleNext(); }} disabled={uploading}>{uploading ? `영상 저장 중 ${progress}%` : pendingFile ? "저장하고 다음으로" : config.nextLabel} {!uploading && <span aria-hidden="true">→</span>}</button>
         <button className="upload-skip" type="button" disabled={uploading} onClick={async () => {
           try { await skipVideo(number); router.push(config.nextPath); }
           catch { setMessage("영상을 삭제하지 못했습니다. 다시 시도해 주세요."); setHasError(true); }

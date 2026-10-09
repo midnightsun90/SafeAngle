@@ -30,7 +30,6 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
         <img src={evidence.imageDataUrl} alt={`영상 ${number}의 평가에 사용한 대표 장면`} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
       ) : file || storedVideo ? (
         <video
-          crossOrigin="anonymous"
           ref={videoRef}
           src={src ?? undefined}
           controls
