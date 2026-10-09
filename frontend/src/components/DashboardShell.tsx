@@ -8,7 +8,7 @@ import { useVideoFiles } from "@/components/VideoFilesProvider";
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
+  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -21,7 +21,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const needsName = ready && !dashboard.evaluatorName && !demoMode;
   const modalOpen = needsName || creating;
-  const needsVideoAgain = activeEvaluation && ([1, 2, 3] as const).some((number) => activeEvaluation.fileKeys[number] && !files[number]);
+  const needsVideoAgain = activeEvaluation && ([1, 2, 3] as const).some((number) => activeEvaluation.fileKeys[number] && !files[number] && !storedVideos[number]);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
   useEffect(() => { if (modalOpen) inputRef.current?.focus(); }, [modalOpen, needsName]);
@@ -145,6 +145,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       </header>
       <div className={`dashboard-content${modalOpen ? " dashboard-content-blurred" : ""}`} aria-hidden={modalOpen} inert={modalOpen}>
         {storageError && <p className="dashboard-storage-error" role="alert">브라우저에 저장하지 못했습니다. 저장 공간 설정을 확인해 주세요.</p>}
+        {connectionError && <p className="dashboard-storage-error" role="alert">{connectionError}</p>}
         {needsVideoAgain && pathname !== "/" && <p className="dashboard-storage-error" role="status">이전에 선택한 영상은 다시 골라야 합니다. <Link href="/upload/1">영상 다시 선택하기 →</Link></p>}
         {children}
       </div>

@@ -10,12 +10,12 @@ import { questionGroups, type QuestionGroup } from "@/lib/questions";
 
 export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber: VideoNumber; groupNumber: QuestionGroup }) {
   const router = useRouter();
-  const { files, answers, demoMode, setAnswer, activeVideos } = useVideoFiles();
+  const { files, storedVideos, answers, demoMode, setAnswer, activeVideos } = useVideoFiles();
   const [error, setError] = useState("");
   useEffect(() => { if (groupNumber === 1) router.replace(`/questions/${videoNumber}/2`); }, [groupNumber, videoNumber, router]);
   const group = questionGroups[groupNumber === 1 ? 2 : groupNumber];
   const values = answers[videoNumber];
-  const ready = activeVideos.includes(videoNumber) && (demoMode || files[videoNumber]);
+  const ready = activeVideos.includes(videoNumber) && (demoMode || files[videoNumber] || storedVideos[videoNumber]);
   const nextVideo = activeVideos.find((number) => number > videoNumber);
 
   function continueToNext(event: FormEvent<HTMLFormElement>) {

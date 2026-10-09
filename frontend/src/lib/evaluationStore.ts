@@ -1,6 +1,7 @@
 export type VideoNumber = 1 | 2 | 3;
 export type Evaluation = {
   id: string;
+  assessmentId: string | null;
   name: string;
   createdAt: string;
   lastPath: string;
@@ -26,11 +27,12 @@ export function createDashboardState(evaluatorName = ""): DashboardState {
   return { evaluatorName, activeId: null, evaluations: [] };
 }
 
-export function addEvaluation(state: DashboardState, name: string, id: string): DashboardState {
+export function addEvaluation(state: DashboardState, name: string, id: string, assessmentId: string | null = null): DashboardState {
   const trimmed = name.trim();
   if (!trimmed || !id || state.evaluations.some((item) => item.id === id)) return state;
   const evaluation: Evaluation = {
     id,
+    assessmentId,
     name: trimmed,
     createdAt: new Date().toISOString(),
     lastPath: "/upload/1",
@@ -44,6 +46,28 @@ export function addEvaluation(state: DashboardState, name: string, id: string): 
 }
 
 export type StoredPerson = { id: string; name: string; created_at: string };
+export type StoredAssessment = { id: string; person_id: string; created_at: string };
+export type StoredPostureInput = {
+  assessment_id: string;
+  posture_type: string;
+  is_skipped: boolean;
+  selected_time_seconds: number | null;
+  answers: Record<string, string>;
+};
+export const postureTypes = { 1: "lift_transfer", 2: "seated_handwork", 3: "push_pull" } as const;
+
+export function postureInputRows(evaluation: Evaluation, managerId: string) {
+  if (!evaluation.assessmentId) return [];
+  return ([1, 2, 3] as const).map((number) => ({
+    assessment_id: evaluation.assessmentId!,
+    manager_id: managerId,
+    posture_type: postureTypes[number],
+    is_skipped: evaluation.skipped[number],
+    selected_time_seconds: evaluation.skipped[number] ? null : evaluation.selectedTimes[number],
+    answers: evaluation.skipped[number] ? {} : evaluation.answers[number],
+    question_schema_version: 1,
+  }));
+}
 
 export function mergeStoredPeople(state: DashboardState, evaluatorName: string, people: StoredPerson[]): DashboardState {
   const local = new Map(state.evaluations.map((item) => [item.id, item]));
@@ -54,6 +78,40 @@ export function mergeStoredPeople(state: DashboardState, evaluatorName: string, 
     evaluatorName,
     activeId: state.activeId && evaluations.some((item) => item.id === state.activeId) ? state.activeId : null,
     evaluations,
+  };
+}
+
+export function mergeStoredAssessments(
+  state: DashboardState,
+  assessments: StoredAssessment[],
+  inputs: StoredPostureInput[],
+  pendingLocalIds: ReadonlySet<string> = new Set(),
+): DashboardState {
+  const latest = new Map<string, StoredAssessment>();
+  for (const assessment of assessments) {
+    if (!latest.has(assessment.person_id)) latest.set(assessment.person_id, assessment);
+  }
+  return {
+    ...state,
+    evaluations: state.evaluations.map((item) => {
+      const assessment = latest.get(item.id);
+      if (!assessment) return item;
+      if (pendingLocalIds.has(assessment.id) && item.assessmentId === assessment.id) {
+        return { ...item, assessmentId: assessment.id };
+      }
+      const matching = inputs.filter((input) => input.assessment_id === assessment.id);
+      const selectedTimes = { ...item.selectedTimes };
+      const answers = { ...item.answers };
+      const skipped = { ...item.skipped };
+      for (const number of [1, 2, 3] as const) {
+        const input = matching.find((row) => row.posture_type === postureTypes[number]);
+        if (!input) continue;
+        selectedTimes[number] = input.selected_time_seconds;
+        answers[number] = input.answers ?? {};
+        skipped[number] = input.is_skipped;
+      }
+      return { ...item, assessmentId: assessment.id, selectedTimes, answers, skipped };
+    }),
   };
 }
 
@@ -88,6 +146,7 @@ export function readDashboardState(raw: string | null): DashboardState | null {
         const restored = { ...item } as Evaluation & { work?: unknown };
         delete restored.work;
         return { ...restored,
+          assessmentId: typeof item.assessmentId === "string" ? item.assessmentId : null,
           lastPath: item.lastPath === "/evaluation" ? "/upload/1" : item.lastPath,
           confirmedScenes: {
             1: item.confirmedScenes?.[1] === true,

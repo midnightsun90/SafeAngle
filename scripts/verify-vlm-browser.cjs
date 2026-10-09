@@ -6,7 +6,8 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'..'),url='http://127.0.0.1:4180',api='http://127.0.0.1:3212/api/vision';
 const dir=path.join(root,'.local/vlm-verification'),records=[],errors=[],requests=[],repeats=[];
 const personId='00000000-0000-4000-8000-000000000002',personId2='00000000-0000-4000-8000-000000000003',managerId='00000000-0000-4000-8000-000000000001',createdAt='2026-10-09T00:00:00.000Z';
-const dbMockRequests=[];
+const dbMockRequests=[],storedRows=[],postureRows=new Map();let tusOffset=0;
+const assessmentId='00000000-0000-4000-8000-000000000004',assessmentId2='00000000-0000-4000-8000-000000000005';
 const server=spawn(process.execPath,['scripts/serve-frontend.mjs'],{cwd:root,env:{...process.env,PORT:'4180'},stdio:['ignore','pipe','pipe']});
 let serverOutput='',browser,page,input,proposal,cached;
 server.stdout.on('data',v=>serverOutput+=v);server.stderr.on('data',v=>serverOutput+=v);
@@ -33,17 +34,27 @@ async function mockAnalyze(points){
   browser=await chromium.launch({channel:'chrome',headless:true});page=await browser.newPage({viewport:{width:1280,height:1000}});
   const user={id:managerId,aud:'authenticated',app_metadata:{},user_metadata:{},created_at:createdAt};
   const token=[Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url'),Buffer.from(JSON.stringify({sub:managerId,aud:'authenticated',exp:Math.floor(Date.now()/1000)+3600,role:'authenticated'})).toString('base64url'),'controlled-verification'].join('.');
-  await page.route('https://*.supabase.co/**',route=>{
-    const request=route.request(),p=new URL(request.url()).pathname;dbMockRequests.push({path:p,method:request.method()});
-    const json=p.startsWith('/auth/')?p.endsWith('/user')?user:{access_token:token,refresh_token:'controlled-verification',expires_in:3600,token_type:'bearer',user}:p.endsWith('/managers')?[{name:'검증 평가자'}]:[{id:personId,name:'공개 영상 검증 대상',created_at:createdAt},{id:personId2,name:'두 번째 검증 대상',created_at:createdAt}];
-    return route.fulfill({json,headers:{'Access-Control-Allow-Origin':'*'}});
+  await page.route('https://*.supabase.co/**',async route=>{
+    const request=route.request(),requestUrl=new URL(request.url()),p=requestUrl.pathname,method=request.method(),body=request.postData();dbMockRequests.push({path:p,method,body:body&&p.startsWith('/rest/')?body:null});
+    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Expose-Headers':'Location,Upload-Offset,Tus-Resumable,Upload-Length','Tus-Resumable':'1.0.0'};
+    if(p.startsWith('/storage/v1/upload/resumable')){
+      if(method==='POST')tusOffset=request.postDataBuffer()?.length??0;
+      if(method==='PATCH')tusOffset+=request.postDataBuffer()?.length??0;
+      return route.fulfill({status:method==='POST'?201:204,body:'',headers:{...headers,'Location':requestUrl.origin+'/storage/v1/upload/resumable/controlled-fixture','Upload-Offset':String(tusOffset)}});
+    }
+    if(p.startsWith('/storage/v1/object/sign/')&&method==='POST')return route.fulfill({json:{signedURL:'/object/sign/assessment-videos/controlled-video.webm?token=controlled-fixture'},headers});
+    if(p.startsWith('/storage/v1/object/sign/')&&method==='GET')return route.fulfill({body:await readFile(path.join(root,'.local/fixtures/squat.webm')),contentType:'video/webm',headers});
+    if(method==='POST'&&p.endsWith('/assessment_videos'))storedRows.push(JSON.parse(body));
+    if(method==='POST'&&p.endsWith('/assessment_posture_inputs'))for(const row of JSON.parse(body))postureRows.set(`${row.assessment_id}:${row.posture_type}`,row);
+    const json=p.startsWith('/auth/')?p.endsWith('/user')?user:{access_token:token,refresh_token:'controlled-verification',expires_in:3600,token_type:'bearer',user}:method!=='GET'?[]:p.endsWith('/managers')?[{name:'검증 평가자'}]:p.endsWith('/people')?[{id:personId,name:'공개 영상 검증 대상',created_at:createdAt},{id:personId2,name:'두 번째 검증 대상',created_at:createdAt}]:p.endsWith('/assessments')?[{id:assessmentId,person_id:personId,created_at:createdAt},{id:assessmentId2,person_id:personId2,created_at:createdAt}]:p.endsWith('/assessment_videos')?storedRows:p.endsWith('/assessment_posture_inputs')?[...postureRows.values()]:[];
+    return route.fulfill({json,headers});
   });
-  await page.addInitScript(({personId,personId2,createdAt})=>localStorage.setItem('safeangle.dashboard.v1',JSON.stringify({evaluatorName:'검증 평가자',activeId:personId,evaluations:[personId,personId2].map(id=>({id,name:id===personId?'공개 영상 검증 대상':'두 번째 검증 대상',createdAt,lastPath:'/analysis',selectedTimes:{1:null,2:null,3:null},answers:{1:{},2:{},3:{}},skipped:{1:false,2:true,3:true},fileKeys:{1:null,2:null,3:null},confirmedScenes:{1:false,2:false,3:false}}))})),{personId,personId2,createdAt});
+  await page.addInitScript(({personId,personId2,assessmentId,assessmentId2,createdAt})=>{if(!localStorage.getItem('safeangle.dashboard.v1'))localStorage.setItem('safeangle.dashboard.v1',JSON.stringify({evaluatorName:'검증 평가자',activeId:personId,evaluations:[personId,personId2].map(id=>({id,assessmentId:id===personId?assessmentId:assessmentId2,name:id===personId?'공개 영상 검증 대상':'두 번째 검증 대상',createdAt,lastPath:'/analysis',selectedTimes:{1:null,2:null,3:null},answers:{1:{},2:{},3:{}},skipped:{1:false,2:true,3:true},fileKeys:{1:null,2:null,3:null},confirmedScenes:{1:false,2:false,3:false}}))}));},{personId,personId2,assessmentId,assessmentId2,createdAt});
   page.on('pageerror',e=>errors.push(e.message));
   page.on('request',r=>{requests.push(r.url());if(r.url()===api&&r.method()==='POST'&&!input)input=r.postDataJSON();});
   page.on('response',async r=>{if(r.url()===api&&r.request().method()==='POST'&&!proposal){const value=await r.json().catch(()=>null);if(value?.status==='proposed')proposal=value;}});
   if(cached)await page.route(api,route=>{const r=route.request().postDataJSON();return route.fulfill({json:{...cached.repeats[0],requestId:r.requestId,capture:r.capture}});});
-  await page.goto(url+'/upload/1');await page.getByLabel('영상 1 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/squat.webm'));await page.locator('.upload-content .next-button').click();
+  await page.goto(url+'/upload/1');await page.getByLabel('영상 1 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/squat.webm'));await page.getByText('영상이 저장됐습니다.',{exact:true}).waitFor();await page.locator('.upload-content .next-button').click();
   for(const number of [2,3]){await page.waitForURL('**/upload/'+number+'/');await page.locator('.upload-skip').click();}
   await page.waitForURL('**/review/');await page.locator('.review-footer .next-button').click();
   for(const group of [2,3,4]){
@@ -51,7 +62,7 @@ async function mockAnalyze(points){
     for(const field of await page.locator('.question-form fieldset').all())await field.locator('input[type="radio"]').first().check();
     await page.locator('.question-form [type="submit"]').click();
   }
-  await page.locator('#evaluation-files').waitFor();records.push({case:'latest team upload -> skip irrelevant work -> Q2-Q4 -> GPT analysis',passed:true});
+  await page.locator('#evaluation-videos').waitFor();records.push({case:'latest team private upload (mocked) -> skip irrelevant work -> Q2-Q4 -> GPT analysis',passed:true});
   await page.locator('#evaluation-timeline').waitFor();await page.waitForFunction(()=>Number(document.querySelector('#evaluation-timeline')?.max)>0);
   await page.locator('#evaluation-timeline').fill('2');await page.locator('#evaluation-side').selectOption('left');await page.locator('#evaluation-facing').selectOption('-1');await page.getByLabel(/한 사람의 측면 장면/).check();
   assert.equal(requests.filter(x=>x===api).length,0);assert.equal(await page.getByRole('button',{name:'GPT 관절 분석',exact:true}).isDisabled(),true);
@@ -86,11 +97,15 @@ async function mockAnalyze(points){
   let releasePerson;const personGate=new Promise(r=>releasePerson=r);await page.route(api,async route=>{await personGate;await route.abort().catch(()=>{});});
   await page.getByRole('button',{name:'이 장면 다시 분석',exact:true}).click();await page.getByRole('button',{name:'요청 취소',exact:true}).waitFor();
   await page.getByRole('button',{name:/두 번째 검증 대상/}).first().click();await page.getByRole('button',{name:/두 번째 검증 대상/}).first().waitFor();
-  await page.waitForFunction(()=>document.querySelector('#evaluation-files')&&!document.querySelector('#evaluation-files').disabled);
+  await page.locator('#evaluation-videos').waitFor();
   assert.equal(await page.locator('#reba-result').count(),0);assert.equal(await page.locator('#joint-editor').count(),0);assert.equal(await page.getByRole('tab').count(),0);releasePerson();await page.unroute(api);
   await page.getByRole('button',{name:/공개 영상 검증 대상/}).first().click();await page.getByRole('tab').waitFor();assert.equal(await page.locator('#reba-result').count(),0);assert.equal(await page.locator('#joint-editor').count(),0);
   records.push({case:'changing person during request cancels old evidence and unlocks upload, no coordinates/score leak',passed:true});
   assert.equal(await page.evaluate(()=>Object.keys(localStorage).some(key=>/data:image|originalPoints|reviewedPoints|responseId/.test(localStorage.getItem(key)??''))),false);
-  assert.deepEqual(errors,[]);assert.equal(requests.some(x=>/mediapipe|\.wasm|pose_landmarker/i.test(x)),false);const external=requests.filter(x=>!x.startsWith(url)&&!x.startsWith('blob:')&&!x.startsWith('data:'));assert.ok(external.every(x=>x===api||x.includes('.supabase.co/')));assert.equal(dbMockRequests.some(r=>r.path.startsWith('/rest/')&&r.method!=='GET'),false);records.push({case:'390px mobile, no MediaPipe/WASM or other model requests, zero page errors, existing DB mocked without data writes',passed:true});
+  await page.goto(url+'/analysis');await page.locator('#evaluation-timeline').waitFor();await page.waitForFunction(()=>Number(document.querySelector('#evaluation-timeline')?.max)>0);
+  assert.match(await page.locator('#evaluation-video').getAttribute('src'),/storage\/v1\/object\/sign/);assert.equal(await page.locator('#reba-result').count(),0);
+  await page.locator('#evaluation-timeline').fill('2');await page.locator('#evaluation-side').selectOption('left');await page.locator('#evaluation-facing').selectOption('-1');await page.getByLabel(/한 사람의 측면 장면/).check();await page.getByLabel(/선택한 장면 한 장을 OpenAI/).check();await mockAnalyze(proposal.points);await questions();
+  assert.ok(Number(await page.locator('#reba-final').getAttribute('data-score'))>=1);records.push({case:'reload -> signed stored video (mocked) -> canvas JPEG -> fresh human confirmation -> REBA',passed:true});
+  assert.deepEqual(errors,[]);assert.equal(requests.some(x=>/mediapipe|\.wasm|pose_landmarker/i.test(x)),false);const external=requests.filter(x=>!x.startsWith(url)&&!x.startsWith('blob:')&&!x.startsWith('data:'));assert.ok(external.every(x=>x===api||x.includes('.supabase.co/')));assert.equal(dbMockRequests.some(r=>r.body&&/data:image|originalPoints|reviewedPoints|responseId/.test(r.body)),false);records.push({case:'390px mobile, no MediaPipe/WASM or other model requests, zero page errors, all DB/storage writes intercepted, no image or coordinate DB persistence',passed:true});
   await writeFile(path.join(dir,'results.json'),JSON.stringify({at:new Date().toISOString(),records,errors,external:[...new Set(external)],dbMockRequests,actualCalls:cached?0:3,reusedRealCalls:cached?3:0,controlledFixtures:true},null,2));console.log(JSON.stringify({cases:records.map(({measured,...record})=>record),errors,actualCalls:cached?0:3,reusedRealCalls:cached?3:0},null,2));
 })().catch(async e=>{console.error(e);await mkdir(dir,{recursive:true});const layout=await page?.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('body *')].map(el=>{const r=el.getBoundingClientRect();return {tag:el.tagName,cls:el.className,right:r.right,width:r.width};}).filter(r=>r.right>innerWidth+1).slice(0,20)})).catch(()=>null);const debug={url:page?.url(),errors,layout,requests:requests.filter(x=>x.startsWith(url)).slice(-10)};console.error(JSON.stringify(debug));await writeFile(path.join(dir,'failure.txt'),String(e.stack)+'\n'+serverOutput+'\n'+JSON.stringify(debug,null,2));if(page)await page.screenshot({path:path.join(dir,'failure.png'),fullPage:true}).catch(()=>{});process.exitCode=1;}).finally(async()=>{await browser?.close();server.kill();});

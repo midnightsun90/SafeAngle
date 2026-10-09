@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useVideoFiles } from "@/components/VideoFilesProvider";
+import { previewRealKey, useVideoFiles } from "@/components/VideoFilesProvider";
 
 export default function PreviewStart() {
   const pathname = usePathname();
@@ -12,6 +12,7 @@ export default function PreviewStart() {
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development" || !ready || pathname !== "/" || started.current) return;
+    try { if (sessionStorage.getItem(previewRealKey) === "1") return; } catch { /* Show the example preview. */ }
     started.current = true;
     startDemo();
     router.replace("/review");
