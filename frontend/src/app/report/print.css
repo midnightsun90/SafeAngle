@@ -1,0 +1,38 @@
+.report-print-error { color: #b42318; }
+
+@media print {
+  @page { size: A4 portrait; margin: 14mm; }
+  body:has(.report-detail) { background: #fff; color: #171717; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body:has(.report-detail) .dashboard-sidebar,
+  body:has(.report-detail) .dashboard-topbar,
+  body:has(.report-detail) .dashboard-storage-error,
+  body:has(.report-detail) .report-detail-back,
+  body:has(.report-detail) .report-detail-tabs,
+  body:has(.report-detail) .report-print-error { display: none !important; }
+  body:has(.report-detail) .dashboard-main-wrap { width: auto; margin: 0 !important; }
+  body:has(.report-detail) .dashboard-content,
+  body:has(.report-detail) .page { padding: 0; margin: 0; }
+  body:has(.report-detail) .page-main { display: block; width: 100%; max-width: none; padding: 0; margin: 0; }
+  body:has(.report-detail) .work-intro { width: 100%; margin: 0 0 4mm; }
+  body:has(.report-detail) h1 { font-size: 22pt; }
+  body:has(.report-detail) h2 { font-size: 15pt; }
+  body:has(.report-detail) h3 { font-size: 11pt; break-after: avoid; }
+  body:has(.report-detail) p { line-height: 1.45; }
+  body:has(.report-detail) .report-detail { max-width: none; padding: 0; }
+  body:has(.report-detail) .report-detail-print-heading { display: block; margin: 0 0 3mm; color: #414a56; font-size: 9pt; }
+  body:has(.report-detail) .report-detail-section { padding: 5mm 0; }
+  body:has(.report-detail) .report-detail-section-title,
+  body:has(.report-detail) .report-detail-heading { break-after: avoid; }
+  body:has(.report-detail) .report-detail-scene video { display: none; }
+  body:has(.report-detail) .report-detail-scene img,
+  body:has(.report-detail) .report-detail-print-frame { display: block; width: auto !important; max-width: 100%; max-height: 65mm; object-fit: contain; margin: 3mm 0; }
+  body:has(.report-detail) .report-detail-measurement,
+  body:has(.report-detail) .report-detail-facts div,
+  body:has(.report-detail) .report-detail-answers div,
+  body:has(.report-detail) .report-detail-points > div { break-inside: avoid; }
+  body:has(.report-detail) .report-detail-measurement { grid-template-columns: 28mm 1fr 35mm; }
+  body:has(.report-detail) .report-detail-answers { columns: 2; column-gap: 8mm; }
+  body:has(.report-detail) .report-detail-answers div { display: block; }
+  body:has(.report-detail) .report-detail-answers dd { max-width: none; text-align: left; }
+  body:has(.report-detail) .report-detail-points > div { grid-template-columns: 25mm 1fr 1fr; }
+}
