@@ -15,6 +15,7 @@ export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
 export type StoredVideo = { storage_path: string; original_filename: string | null; duration_seconds: number | null };
 type StoredVideos = Record<VideoNumber, StoredVideo | null>;
+type EvaluatorSession = { manager_id: string; evaluator_name: string; manager_ids: string[] };
 const emptyFiles = (): VideoFiles => ({ 1: null, 2: null, 3: null });
 const emptyStoredVideos = (): StoredVideos => ({ 1: null, 2: null, 3: null });
 const emptyAnswers = (): Record<VideoNumber, Record<string, string>> => ({ 1: {}, 2: {}, 3: {} });
@@ -97,7 +98,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     const path = item ? current.storedVideosByPerson[item.id]?.[number]?.storage_path ?? null : null;
     if (!item || !current.managerId || !supabase) throw new Error("평가와 로그인 상태를 확인해 주세요.");
     const client = supabase;
-    const owner = current.managerId;
+    const owner = item.managerId ?? current.managerId;
     const version = syncVersion.current;
     const fingerprint = JSON.stringify(postureInputRows(item, owner));
     const next = writeQueue.current.catch(() => {}).then(async () => {
@@ -121,67 +122,38 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
         if (previewDemo) setDemoMode(true);
         if (!supabase) throw new Error("DB 설정이 없습니다.");
         const savedState = readDashboardState(localStorage.getItem(dashboardStorageKey)) ?? createDashboardState();
-        const saved = previewDemo ? { ...savedState, activeId: null } : savedState;
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
-        let user = sessionData.session?.user ?? null;
-        if (!user && saved.evaluatorName) {
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) throw error;
-          user = data.user;
-        }
+        const user = sessionData.session?.user ?? null;
         if (!user) { if (!cancelled) setCanPersist(true); return; }
-        const { data: profile, error: profileError } = await supabase.from("managers").select("name").eq("id", user.id).maybeSingle();
+        const { data: profileData, error: profileError } = await supabase.rpc("current_evaluator").maybeSingle();
         if (profileError) throw profileError;
-        let managerName = profile?.name ?? "";
-        if (!managerName && saved.evaluatorName) {
-          const { error } = await supabase.from("managers").insert({ id: user.id, name: saved.evaluatorName });
-          if (error) throw error;
-          managerName = saved.evaluatorName;
-        }
-        if (!managerName) { if (!cancelled) setCanPersist(true); return; }
+        const profile = profileData as EvaluatorSession | null;
+        const managerName = profile?.evaluator_name ?? "";
+        if (!profile || !managerName) { if (!cancelled) setCanPersist(true); return; }
+        const ownerIds = profile.manager_ids;
+        const ownerId = profile.manager_id;
+        const saved = savedState.evaluatorName.toLocaleLowerCase() === managerName.toLocaleLowerCase()
+          ? (previewDemo ? { ...savedState, activeId: null } : savedState)
+          : createDashboardState(managerName);
         const { data: existing, error: peopleError } = await supabase.from("people")
-          .select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false });
+          .select("id,manager_id,name,created_at").in("manager_id", ownerIds).order("created_at", { ascending: false });
         if (peopleError) throw peopleError;
-        const existingIds = new Set((existing ?? []).map((item) => item.id));
-        const missing = saved.evaluations.filter((item) => !existingIds.has(item.id));
-        if (missing.length) {
-          const { error } = await supabase.from("people").insert(missing.map((item) => ({
-            id: item.id, manager_id: user.id, name: item.name, created_at: item.createdAt,
-          })));
-          if (error) throw error;
-        }
-        const { data: people, error: refreshError } = missing.length
-          ? await supabase.from("people").select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
-          : { data: existing, error: null };
-        if (refreshError) throw refreshError;
-        const mergedPeople = mergeStoredPeople(saved, managerName, (people ?? []) as StoredPerson[]);
+        const mergedPeople = mergeStoredPeople(saved, managerName, (existing ?? []) as StoredPerson[]);
         const { data: existingAssessments, error: assessmentError } = await supabase.from("assessments")
-          .select("id,person_id,created_at").eq("manager_id", user.id).order("created_at", { ascending: false });
+          .select("id,person_id,created_at").in("manager_id", ownerIds).order("created_at", { ascending: false });
         if (assessmentError) throw assessmentError;
-        const assessedPeople = new Set((existingAssessments ?? []).map((row) => row.person_id));
-        const missingAssessments = mergedPeople.evaluations.filter((item) => !assessedPeople.has(item.id));
-        if (missingAssessments.length) {
-          const { error } = await supabase.from("assessments").insert(missingAssessments.map((item) => ({
-            id: item.assessmentId ?? crypto.randomUUID(), manager_id: user.id, person_id: item.id,
-          })));
-          if (error) throw error;
-        }
-        const { data: assessments, error: assessmentRefreshError } = missingAssessments.length
-          ? await supabase.from("assessments").select("id,person_id,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
-          : { data: existingAssessments, error: null };
-        if (assessmentRefreshError) throw assessmentRefreshError;
         const { data: inputs, error: inputError } = await supabase.from("assessment_posture_inputs")
-          .select("assessment_id,posture_type,is_skipped,selected_time_seconds,answers").eq("manager_id", user.id);
+          .select("assessment_id,posture_type,is_skipped,selected_time_seconds,answers").in("manager_id", ownerIds);
         if (inputError) throw inputError;
         const { data: videos, error: videoError } = await supabase.from("assessment_videos")
-          .select("assessment_id,posture_type,storage_path,original_filename,duration_seconds").eq("manager_id", user.id);
+          .select("assessment_id,posture_type,storage_path,original_filename,duration_seconds").in("manager_id", ownerIds);
         if (videoError) throw videoError;
         if (!cancelled) {
           const pending = new Set(Object.keys(readPendingSync()));
-          setDashboard(mergeStoredAssessments(mergedPeople, (assessments ?? []) as StoredAssessment[], (inputs ?? []) as StoredPostureInput[], pending));
+          setDashboard(mergeStoredAssessments(mergedPeople, (existingAssessments ?? []) as StoredAssessment[], (inputs ?? []) as StoredPostureInput[], pending));
           const latestAssessmentIds = new Map<string, string>();
-          for (const assessment of assessments ?? []) {
+          for (const assessment of existingAssessments ?? []) {
             if (!latestAssessmentIds.has(assessment.person_id)) latestAssessmentIds.set(assessment.person_id, assessment.id);
           }
           const personByAssessment = new Map([...latestAssessmentIds].map(([personId, assessmentId]) => [assessmentId, personId]));
@@ -195,7 +167,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
             restoredVideos[personId][number] = video;
           }
           setStoredVideosByPerson(restoredVideos);
-          setManagerId(user.id);
+          setManagerId(ownerId);
           setCanPersist(true);
         }
       } catch {
@@ -329,30 +301,28 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
       user = data.user ?? undefined;
     }
     if (!user) throw new Error("로그인에 실패했습니다.");
-    const { error } = await supabase.from("managers").upsert({ id: user.id, name: trimmed });
+    const { error } = await supabase.rpc("enter_evaluator", { p_name: trimmed }).single();
     if (error) throw error;
     setConnectionError("");
-    setCanPersist(true);
-    setManagerId(user.id);
-    setDashboard((current) => ({ ...current, evaluatorName: trimmed }));
+    window.location.reload();
   }
 
   async function addPerson(name: string) {
-    if (!supabase) throw new Error("DB 설정이 없습니다.");
+    if (!supabase || !managerId) throw new Error("DB 설정이 없습니다.");
     const { data: userData, error: authError } = await supabase.auth.getUser();
     if (authError || !userData.user) throw authError ?? new Error("로그인이 필요합니다.");
     const id = crypto.randomUUID();
     const assessmentId = crypto.randomUUID();
-    const { error } = await supabase.from("people").insert({ id, manager_id: userData.user.id, name: name.trim() });
+    const { error } = await supabase.from("people").insert({ id, manager_id: managerId, name: name.trim() });
     if (error) throw error;
     const { error: assessmentError } = await supabase.from("assessments").insert({
-      id: assessmentId, manager_id: userData.user.id, person_id: id,
+      id: assessmentId, manager_id: managerId, person_id: id,
     });
     if (assessmentError) {
-      await supabase.from("people").delete().eq("id", id).eq("manager_id", userData.user.id);
+      await supabase.from("people").delete().eq("id", id).eq("manager_id", managerId);
       throw assessmentError;
     }
-    setDashboard((current) => addEvaluation(current, name, id, assessmentId));
+    setDashboard((current) => addEvaluation(current, name, id, assessmentId, managerId));
     setDemoMode(false);
     writeDemoSession(false);
     setResultVideo(1);
@@ -421,15 +391,16 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (validationError) throw new Error(validationError);
     if (!activeEvaluation?.assessmentId || !managerId || !supabase) throw new Error("평가를 먼저 시작해 주세요.");
     const { data: userData, error: authError } = await supabase.auth.getUser();
-    if (authError || userData.user?.id !== managerId) throw new Error("로그인을 확인하지 못했습니다. 새로고침해 주세요.");
+    if (authError || !userData.user) throw new Error("로그인을 확인하지 못했습니다. 새로고침해 주세요.");
     const id = activeEvaluation.id;
     const posture = videoPostureTypes[number - 1];
-    const path = storagePathForVideo(managerId, activeEvaluation.assessmentId, posture, file.name);
+    const ownerId = activeEvaluation.managerId ?? managerId;
+    const path = storagePathForVideo(ownerId, activeEvaluation.assessmentId, posture, file.name);
     const previousPath = storedVideos[number]?.storage_path;
     const duration = await videoDuration(file);
     await uploadVideo(file, path, onProgress);
     const { error } = await supabase.from("assessment_videos").upsert({
-      manager_id: managerId, assessment_id: activeEvaluation.assessmentId, posture_type: posture,
+      manager_id: ownerId, assessment_id: activeEvaluation.assessmentId, posture_type: posture,
       storage_path: path, original_filename: file.name, duration_seconds: duration,
     }, { onConflict: "assessment_id,posture_type" });
     if (error) {

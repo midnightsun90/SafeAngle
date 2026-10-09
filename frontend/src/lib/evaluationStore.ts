@@ -1,6 +1,7 @@
 export type VideoNumber = 1 | 2 | 3;
 export type Evaluation = {
   id: string;
+  managerId?: string;
   assessmentId: string | null;
   name: string;
   createdAt: string;
@@ -27,11 +28,12 @@ export function createDashboardState(evaluatorName = ""): DashboardState {
   return { evaluatorName, activeId: null, evaluations: [] };
 }
 
-export function addEvaluation(state: DashboardState, name: string, id: string, assessmentId: string | null = null): DashboardState {
+export function addEvaluation(state: DashboardState, name: string, id: string, assessmentId: string | null = null, managerId?: string): DashboardState {
   const trimmed = name.trim();
   if (!trimmed || !id || state.evaluations.some((item) => item.id === id)) return state;
   const evaluation: Evaluation = {
     id,
+    managerId,
     assessmentId,
     name: trimmed,
     createdAt: new Date().toISOString(),
@@ -45,7 +47,7 @@ export function addEvaluation(state: DashboardState, name: string, id: string, a
   return { ...state, activeId: id, evaluations: [evaluation, ...state.evaluations] };
 }
 
-export type StoredPerson = { id: string; name: string; created_at: string };
+export type StoredPerson = { id: string; manager_id: string; name: string; created_at: string };
 export type StoredAssessment = { id: string; person_id: string; created_at: string };
 export type StoredPostureInput = {
   assessment_id: string;
@@ -60,7 +62,7 @@ export function postureInputRows(evaluation: Evaluation, managerId: string) {
   if (!evaluation.assessmentId) return [];
   return ([1, 2, 3] as const).map((number) => ({
     assessment_id: evaluation.assessmentId!,
-    manager_id: managerId,
+    manager_id: evaluation.managerId ?? managerId,
     posture_type: postureTypes[number],
     is_skipped: evaluation.skipped[number],
     selected_time_seconds: evaluation.skipped[number] ? null : evaluation.selectedTimes[number],
@@ -72,8 +74,8 @@ export function postureInputRows(evaluation: Evaluation, managerId: string) {
 export function mergeStoredPeople(state: DashboardState, evaluatorName: string, people: StoredPerson[]): DashboardState {
   const local = new Map(state.evaluations.map((item) => [item.id, item]));
   const evaluations = people.map((person) => local.get(person.id)
-    ? { ...local.get(person.id)!, name: person.name, createdAt: person.created_at }
-    : addEvaluation(createDashboardState(), person.name, person.id).evaluations[0]);
+    ? { ...local.get(person.id)!, managerId: person.manager_id, name: person.name, createdAt: person.created_at }
+    : addEvaluation(createDashboardState(), person.name, person.id, null, person.manager_id).evaluations[0]);
   return {
     evaluatorName,
     activeId: state.activeId && evaluations.some((item) => item.id === state.activeId) ? state.activeId : null,

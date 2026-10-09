@@ -4,6 +4,7 @@ const numbers = [1, 2, 3] as const;
 function fail(error: { message: string } | null): void { if (error) throw new Error(error.message); }
 export async function saveAssessmentInputs(db: SupabaseClient, manager: string, item: Evaluation): Promise<void> {
   if (!item.assessmentId) throw new Error("평가 식별자가 없습니다.");
+  manager = item.managerId ?? manager;
   const rows = postureInputRows(item, manager);
   const existingInputs = await db.from("assessment_posture_inputs").select("posture_type,is_skipped,selected_time_seconds,answers")
     .eq("assessment_id", item.assessmentId).eq("manager_id", manager);
@@ -58,6 +59,7 @@ function analysisSnapshot(value: unknown, item: Evaluation, number: VideoNumber)
 }
 
 export async function persistAnalysisResult(db: SupabaseClient, manager: string, item: Evaluation, number: VideoNumber, value: unknown, storagePath: string | null): Promise<void> {
+  manager = item.managerId ?? manager;
   const snapshot = analysisSnapshot(value, item, number);
   if (JSON.stringify(value).length > 2_000_000) throw new Error("분석 결과가 너무 큽니다.");
   if (!item.assessmentId) throw new Error("평가 식별자가 없습니다.");
@@ -88,6 +90,7 @@ export async function persistAnalysisResult(db: SupabaseClient, manager: string,
 }
 
 export async function restoreAnalysisResults(db: SupabaseClient, manager: string, item: Evaluation): Promise<Partial<Record<VideoNumber, unknown>>> {
+  manager = item.managerId ?? manager;
   const stored = await db.from("assessment_analysis_results").select("result").eq("id", item.assessmentId).eq("manager_id", manager).maybeSingle();
   if (stored.error?.code === "PGRST205") return {};
   fail(stored.error);

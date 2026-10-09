@@ -154,7 +154,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       <div className="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
         <div className="dashboard-modal-mark">S<span>.</span></div>
         <h2 id="dashboard-modal-title">{needsName ? "이름을 알려주세요" : "누구를 평가하나요?"}</h2>
-        <p>{needsName ? "평가자 이름을 입력하면 대시보드를 사용할 수 있습니다." : "평가 대상자의 이름을 입력해 주세요."}</p>
+        <p>{needsName ? "같은 이름의 기존 평가를 불러옵니다. 이름을 아는 다른 사람도 볼 수 있습니다." : "평가 대상자의 이름을 입력해 주세요."}</p>
         <form onSubmit={submitName}>
           <label htmlFor="dashboard-name">{needsName ? "평가자 이름" : "평가 대상자 이름"}</label>
           <input ref={inputRef} id="dashboard-name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" maxLength={50} disabled={saving} required />
