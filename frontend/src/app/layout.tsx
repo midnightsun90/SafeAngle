@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./safeangle.css";
+import { VideoFilesProvider } from "@/components/VideoFilesProvider";
 
 export const metadata: Metadata = {
   title: "SafeAngle | 새 작업 평가",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body><VideoFilesProvider>{children}</VideoFilesProvider></body>
     </html>
   );
 }

@@ -109,11 +109,102 @@
 .next-button:focus-visible { outline: 3px solid #171717; outline-offset: 3px; }
 .next-button span { margin-left: 7px; }
 
-.save-status {
+.form-status {
   margin: -16px 0 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.5;
+}
+
+.form-status-error { color: #ba3210; }
+
+.upload-content { margin-top: 56px; }
+
+.shooting-guide h2 {
+  margin: 0 0 17px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -.5px;
+}
+
+.shooting-guide p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.8;
+  letter-spacing: -.45px;
+}
+
+.upload-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 214px;
+  margin-top: 44px;
+  border: 2px dashed #d9dfe8;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.upload-zone:hover, .upload-zone-dragging, .upload-zone:focus-within {
+  border-color: var(--accent);
+  background: #fffaf7;
+}
+
+.upload-zone:focus-within { outline: 3px solid rgb(255 90 20 / 16%); outline-offset: 2px; }
+
+.upload-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-plus {
+  color: #a2adbe;
+  font-size: 50px;
+  font-weight: 200;
+  line-height: 1;
+}
+
+.upload-title {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.upload-hint {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.selected-video {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.selected-video-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shooting-note {
+  margin: 17px 0 45px;
+  color: var(--muted);
+  font-size: 16px;
 }
 
 @media (max-width: 640px) {
@@ -128,4 +219,11 @@
   .field label { font-size: 16px; }
   .field input { height: 56px; font-size: 16px; }
   .next-button { min-height: 60px; font-size: 18px; }
+  .upload-content { margin-top: 44px; }
+  .shooting-guide h2 { font-size: 16px; }
+  .shooting-guide p { font-size: 15px; }
+  .upload-zone { min-height: 180px; margin-top: 32px; }
+  .upload-title { font-size: 16px; }
+  .upload-hint, .shooting-note { font-size: 14px; }
+  .shooting-note { margin-bottom: 32px; }
 }
