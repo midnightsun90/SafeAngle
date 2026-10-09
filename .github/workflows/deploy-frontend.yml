@@ -29,14 +29,14 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
-      - name: Check types
-        working-directory: frontend
-        run: npm run typecheck
       - name: Build static site
         working-directory: frontend
         env:
           GITHUB_PAGES: "true"
         run: npm run build
+      - name: Check types
+        working-directory: frontend
+        run: npm run typecheck
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
         with:
