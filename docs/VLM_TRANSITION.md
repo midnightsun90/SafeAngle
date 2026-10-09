@@ -72,6 +72,8 @@ Pages workflow는 repository variable `VISION_API_URL`을 빌드 시 읽는다. 
 
 공개 API의 기본 허용 Origin은 `https://midnightsun90.github.io`다. 웹은 현재 Supabase 세션의 Bearer 토큰을 전달하고, API가 같은 Supabase의 `/auth/v1/user`에서 검증한다. 없는 토큰·만료된 세션은 401이며 OpenAI를 호출하지 않는다. 기존 익명 로그인과 RLS는 유지한다. 다른 배포를 연결할 때 `ALLOWED_ORIGIN`과 필요 시 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`를 설정한다. 이 publishable key는 서버 비밀 키가 아니다.
 
+API 빌드는 Node 24에서 `node scripts/build-api.mjs`로 진행한다. 기본 `stripTypeScriptTypes`로 필요한 서버·VLM 7개 파일을 `.api-build`의 JavaScript로 변환하고 상대 import 확장자를 바꾼다. `api/vision.mjs`가 생성된 처리기를 불러온다. 처리기 export는 빌드 중 assert로 확인하며 생성 파일은 Git에 넣지 않는다. 공개 웹의 실제 DB·저장소 → 재불러오기 → GPT → REBA → 상세 평가서까지 검증했으며, 분모와 미확인 항목은 [검증 기록](VLM_VERIFICATION.md)에 있다.
+
 로컬 서버 환경은 `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, `ALLOWED_ORIGIN`, `PORT`, `HOST`다. 단일 프로세스 동시·분당 제한은 배포 인스턴스마다 적용되므로 전체 프로젝트 지출 상한을 대신하지 않는다.
 
 ## 상태와 검증

@@ -37,4 +37,4 @@
 - 아직 검증하지 못한 실제 API, 배포, 촬영 환경과 정확도는 README에 미확인으로 남긴다. 성공 수치를 지어내지 않는다.
 - 대표가 포크 검증 보고서의 OpenAI API 전용 방향을 확정해 제품을 전환했다. 현재 계약·실행은 `docs/VLM_TRANSITION.md`, 실제 실행 증거는 `docs/VLM_VERIFICATION.md`와 기존 REBA 검증 문서를 확인한다. 기존 `scoreScene`·포즈 엔진·이력은 호환성을 위해 유지하지만 제품 화면은 MediaPipe를 호출하지 않는다.
 - `gpt-6.1-sol`, reasoning high, 이미지 original, strict 좌표 출력, store:false를 사용한다. 요청한 쪽·장면·revision을 고정하고 다른 응답을 버린다. 원 제안·사람 수정·null·부위별 이유를 보존한다. GPT를 가짜 landmarks/visibility로 포장하지 않는다.
-- 원본 영상은 팀의 비공개 Supabase 업로드 흐름(최대 50MB)을 유지한다. OpenAI에는 동의한 대표 장면 한 장만 보낸다. 좌표 수정·장면·쪽·방향·재요청은 답변과 점수를 초기화한다. 공개 API는 별도 서버와 Origin·지출 제한 설정이 필요하다. 독립 정답 대비 정확도와 공개 배포는 미검증이다.
+- 원본 영상은 팀의 비공개 Supabase 업로드 흐름(최대 50MB)을 유지한다. OpenAI에는 동의한 대표 장면 한 장만 보낸다. 좌표 수정·장면·쪽·방향·재요청은 답변과 점수를 초기화한다. Pages와 인증된 Vercel API의 실제 저장·재불러오기·GPT·REBA·평가서 연결은 검증했다. 독립 정답 대비 정확도와 현장 영상은 미검증이다. 공개 API의 인증·Origin·키 비공개를 유지하고 단일 인스턴스 제한을 전체 지출 상한으로 표현하지 않는다.
