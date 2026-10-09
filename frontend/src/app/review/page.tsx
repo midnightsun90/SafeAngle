@@ -17,13 +17,14 @@ const videos: { number: VideoNumber; title: string }[] = [
 ];
 
 function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) {
-  const { files, demoMode, setFile } = useVideoFiles();
+  const { files, demoMode, setFile, uploading, loadingVideos } = useVideoFiles();
   const file = files[number];
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [storageConsent, setStorageConsent] = useState(false);
 
   useEffect(() => {
     if (!file) return;
@@ -35,17 +36,17 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
     };
   }, [file]);
 
-  function replaceVideo(event: ChangeEvent<HTMLInputElement>) {
+  async function replaceVideo(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0];
     event.target.value = "";
     if (!nextFile) return;
+    if (!storageConsent || uploading) return;
     if (!isVideoFile(nextFile)) {
       setError("영상 파일을 선택해 주세요.");
       return;
     }
-    setFile(number, nextFile);
-    setVideoUrl(null);
-    setError("");
+    try { await setFile(number, nextFile); setError(""); }
+    catch (error) { setError(error instanceof Error ? error.message : "영상을 저장하지 못했습니다."); }
   }
 
   return (
@@ -75,7 +76,8 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
       )}
 
       <div className="review-actions">
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode}>영상 바꾸기</button>
+        {!demoMode && <label className="video-storage-consent"><input type="checkbox" checked={storageConsent} onChange={(event) => setStorageConsent(event.target.checked)} disabled={uploading} />촬영 대상자의 동의를 받았으며, 교체 영상을 비공개 저장소에 저장하는 데 동의합니다.</label>}
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode || !storageConsent || uploading || loadingVideos}>{uploading ? "저장 중..." : "영상 바꾸기"}</button>
         <input
           ref={fileInputRef}
           className="visually-hidden"

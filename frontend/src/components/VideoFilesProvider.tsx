@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber } from "@/lib/evaluationStore";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { addEvaluation, createDashboardState, dashboardStorageKey, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber } from "@/lib/evaluationStore";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
+import { restoreAssessments, saveAssessmentInputs, uploadAssessmentVideo, downloadAssessmentVideos } from "@/lib/assessmentStorage";
 
 export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
@@ -23,6 +24,8 @@ function writeDemoSession(enabled: boolean): void {
 }
 
 type ContextValue = {
+  cloudStatus: "idle" | "saving" | "saved" | "error"; cloudError: string; uploading: boolean; loadingVideos: boolean;
+  retrySave: () => Promise<void>; retryVideos: () => void;
   dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
   files: VideoFiles; selectedTimes: Record<VideoNumber, number | null>;
   answers: Record<VideoNumber, Record<string, string>>; skipped: Record<VideoNumber, boolean>;
@@ -32,7 +35,7 @@ type ContextValue = {
   setEvaluatorName: (name: string) => Promise<void>; addPerson: (name: string) => Promise<void>;
   logOut: () => Promise<void>;
   selectPerson: (id: string) => string; savePath: (path: string) => void;
-  setFile: (number: VideoNumber, file: File) => void; skipVideo: (number: VideoNumber) => void;
+  setFile: (number: VideoNumber, file: File) => Promise<void>; skipVideo: (number: VideoNumber) => void;
   setSelectedTime: (number: VideoNumber, time: number) => void;
   setAnswer: (number: VideoNumber, key: string, value: string) => void;
   startDemo: () => void; setResultVideo: (number: VideoNumber) => void;
@@ -52,6 +55,50 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [demoConfirmed, setDemoConfirmed] = useState<Record<VideoNumber, boolean>>({ 1: false, 2: false, 3: false });
   const [demoMode, setDemoMode] = useState(false);
   const [resultVideo, setResultVideo] = useState<VideoNumber>(1);
+  const [cloudStatus, setCloudStatus] = useState<ContextValue["cloudStatus"]>("idle");
+  const [cloudError, setCloudError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [videoReload, setVideoReload] = useState(0);
+  const latest = useRef(dashboard);
+  latest.current = dashboard;
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingJobs = useRef(0);
+  const accountEpoch = useRef(0);
+  const uploadInFlight = useRef(false);
+
+  function enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const epoch = accountEpoch.current;
+    pendingJobs.current++;
+    setCloudStatus("saving");
+    const next = queue.current.catch(() => {}).then(async () => {
+      if (epoch !== accountEpoch.current) throw new Error("로그인 상태가 변경되었습니다.");
+      return job();
+    });
+    queue.current = next;
+    return next.then((value) => {
+      if (epoch === accountEpoch.current && pendingJobs.current === 1) { setCloudError(""); setCloudStatus("saved"); }
+      return value;
+    }, (error: unknown) => {
+      if (epoch === accountEpoch.current) {
+        setCloudError("저장하지 못했습니다. 입력은 이 브라우저에 남아 있습니다. 연결을 확인하고 다시 저장해 주세요.");
+        setCloudStatus("error");
+      }
+      throw error;
+    }).finally(() => { pendingJobs.current--; });
+  }
+
+  async function retrySave(): Promise<void> {
+    await enqueue(async () => {
+      const state = latest.current;
+      if (!supabase || !state.managerId) throw new Error("로그인이 필요합니다.");
+      for (const snapshot of state.evaluations.filter((item) => item.pendingSave)) {
+        await saveAssessmentInputs(supabase, state.managerId, snapshot);
+        setDashboard((current) => ({ ...current, evaluations: current.evaluations.map((item) =>
+          item.id === snapshot.id && JSON.stringify(item) === JSON.stringify(snapshot) ? { ...item, pendingSave: false } : item) }));
+      }
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -83,20 +130,14 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
         const { data: existing, error: peopleError } = await supabase.from("people")
           .select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false });
         if (peopleError) throw peopleError;
-        const existingIds = new Set((existing ?? []).map((item) => item.id));
-        const missing = saved.evaluations.filter((item) => !existingIds.has(item.id));
-        if (missing.length) {
-          const { error } = await supabase.from("people").insert(missing.map((item) => ({
-            id: item.id, manager_id: user.id, name: item.name, created_at: item.createdAt,
-          })));
-          if (error) throw error;
-        }
-        const { data: people, error: refreshError } = missing.length
-          ? await supabase.from("people").select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
-          : { data: existing, error: null };
-        if (refreshError) throw refreshError;
+        const people = (existing ?? []) as StoredPerson[];
+        const ownedCache = saved.managerId === user.id ? saved : !saved.managerId
+          ? { ...saved, evaluations: saved.evaluations.filter((item) => people.some((person) => person.id === item.id)) }
+          : createDashboardState(managerName);
+        const evaluations = await restoreAssessments(supabase, user.id, people, ownedCache.evaluations);
         if (!cancelled) {
-          setDashboard(mergeStoredPeople(saved, managerName, (people ?? []) as StoredPerson[]));
+          const restored = mergeStoredPeople(ownedCache, managerName, people);
+          setDashboard({ ...restored, managerId: user.id, evaluations });
           setCanPersist(true);
         }
       } catch {
@@ -115,6 +156,21 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     catch { setStorageError(true); }
   }, [dashboard, ready, canPersist]);
 
+  useEffect(() => {
+    if (!uploading && !dashboard.evaluations.some((item) => item.pendingSave)) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dashboard, uploading]);
+
+  useEffect(() => {
+    if (!ready || !canPersist || !dashboard.managerId || !dashboard.evaluations.some((item) => item.pendingSave)) return;
+    const timer = setTimeout(() => { void retrySave().catch(() => {}); }, 350);
+    return () => clearTimeout(timer);
+    // Writes are serialized, and each queued job reads the latest snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard, ready, canPersist]);
+
   const activeEvaluation = dashboard.evaluations.find((item) => item.id === dashboard.activeId) ?? null;
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
   const selectedTimes = activeEvaluation ? activeEvaluation.selectedTimes : demoTimes;
@@ -122,6 +178,27 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const confirmedScenes = activeEvaluation ? activeEvaluation.confirmedScenes : demoConfirmed;
   const skipped = activeEvaluation ? activeEvaluation.skipped : { 1: false, 2: false, 3: false };
   const activeVideos = ([1, 2, 3] as const).filter((number) => demoMode || !skipped[number]);
+  const activePaths = JSON.stringify(activeEvaluation?.fileKeys ?? {});
+
+  useEffect(() => {
+    let cancelled = false;
+    const item = latest.current.evaluations.find((row) => row.id === latest.current.activeId);
+    const epoch = accountEpoch.current;
+    if (!item?.assessmentId || !supabase || !dashboard.managerId || demoMode) return;
+    const retained = filesByPerson[item.id] ?? emptyFiles();
+    if (!([1, 2, 3] as const).some((n) => item.fileKeys[n] && !retained[n] && !item.skipped[n])) return;
+    setLoadingVideos(true);
+    void downloadAssessmentVideos(supabase, dashboard.managerId, item).then((restored) => {
+      if (cancelled || epoch !== accountEpoch.current) return;
+      setFilesByPerson((current) => ({ ...current, [item.id]: { ...emptyFiles(), ...current[item.id], ...restored } }));
+      setCloudError("");
+    }).catch(() => {
+      if (!cancelled) setCloudError("저장된 영상을 불러오지 못했습니다. 다시 불러오거나 영상 파일을 선택해 주세요.");
+    }).finally(() => { if (!cancelled) setLoadingVideos(false); });
+    return () => { cancelled = true; setLoadingVideos(false); };
+    // File changes cancel the old download so it cannot overwrite a replacement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard.activeId, dashboard.managerId, activePaths, demoMode, videoReload]);
 
   async function setEvaluatorName(name: string) {
     const trimmed = name.trim();
@@ -138,7 +215,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
     setConnectionError("");
     setCanPersist(true);
-    setDashboard((current) => ({ ...current, evaluatorName: trimmed }));
+    setDashboard((current) => ({ ...current, evaluatorName: trimmed, managerId: user.id }));
   }
 
   async function addPerson(name: string) {
@@ -148,7 +225,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID();
     const { error } = await supabase.from("people").insert({ id, manager_id: userData.user.id, name: name.trim() });
     if (error) throw error;
-    setDashboard((current) => addEvaluation(current, name, id));
+    const assessmentId = crypto.randomUUID();
+    setDashboard((current) => {
+      const added = addEvaluation(current, name, id);
+      return { ...added, evaluations: added.evaluations.map((item) => item.id === id ? { ...item, assessmentId, pendingSave: true } : item) };
+    });
     setDemoMode(false);
     writeDemoSession(false);
     setResultVideo(1);
@@ -156,8 +237,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
 
   async function logOut() {
     if (!supabase) throw new Error("DB 설정이 없습니다.");
+    await queue.current.catch(() => {});
+    if (latest.current.evaluations.some((item) => item.pendingSave)) await retrySave();
     const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw error;
+    accountEpoch.current++;
     try { localStorage.removeItem(dashboardStorageKey); setStorageError(false); }
     catch { setStorageError(true); }
     setDashboard(createDashboardState());
@@ -194,18 +278,27 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     }));
   }
 
-  function setFile(number: VideoNumber, file: File) {
-    if (!dashboard.activeId) return;
+  async function setFile(number: VideoNumber, file: File): Promise<void> {
+    if (!dashboard.activeId || !dashboard.managerId || !supabase || uploadInFlight.current) throw new Error("평가와 로그인 상태를 확인해 주세요.");
     const id = dashboard.activeId;
+    const manager = dashboard.managerId;
+    const db = supabase;
+    const item = dashboard.evaluations.find((row) => row.id === id)!;
+    const epoch = accountEpoch.current;
+    uploadInFlight.current = true;
+    setUploading(true);
+    let path: string;
+    try { path = await enqueue(() => uploadAssessmentVideo(db, manager, item, number, file)); }
+    finally { uploadInFlight.current = false; setUploading(false); }
+    if (epoch !== accountEpoch.current) throw new Error("로그인 상태가 변경되었습니다.");
     setFilesByPerson((current) => ({ ...current, [id]: { ...(current[id] ?? emptyFiles()), [number]: file } }));
     setDashboard((current) => updateEvaluation(current, id, (item) => {
-      const sameFile = item.fileKeys[number] === fileIdentity(file);
       return { ...item,
-        fileKeys: { ...item.fileKeys, [number]: fileIdentity(file) },
+        fileKeys: { ...item.fileKeys, [number]: path },
         skipped: { ...item.skipped, [number]: false },
-        selectedTimes: sameFile ? item.selectedTimes : { ...item.selectedTimes, [number]: null },
-        answers: sameFile ? item.answers : { ...item.answers, [number]: {} },
-        confirmedScenes: sameFile ? item.confirmedScenes : { ...item.confirmedScenes, [number]: false },
+        selectedTimes: { ...item.selectedTimes, [number]: null },
+        answers: { ...item.answers, [number]: {} },
+        confirmedScenes: { ...item.confirmedScenes, [number]: false },
       };
     }));
   }
@@ -269,7 +362,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     })));
   }
 
-  return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
+  return <VideoFilesContext.Provider value={{ cloudStatus, cloudError, uploading, loadingVideos, retrySave, retryVideos: () => setVideoReload((value) => value + 1), dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
     confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }

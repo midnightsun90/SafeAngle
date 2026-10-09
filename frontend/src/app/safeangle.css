@@ -251,6 +251,10 @@
 }
 
 .review-actions button:hover { color: var(--accent); }
+.video-storage-consent { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; font-size: 14px; line-height: 1.6; text-align: left; }
+.video-storage-consent input { flex: none; width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); }
+.review-actions:has(.video-storage-consent) { flex-wrap: wrap; }
+.review-actions .video-storage-consent { flex-basis: 100%; }
 .review-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .review-actions button:disabled { color: #aeb5c1; cursor: not-allowed; }
 .review-actions > span { width: 1px; height: 27px; background: var(--line); }

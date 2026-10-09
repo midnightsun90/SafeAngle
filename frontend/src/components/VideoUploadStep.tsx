@@ -10,13 +10,14 @@ import { filmingNotice, uploadCopy } from "@/lib/uploadCopy";
 
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   const router = useRouter();
-  const { files, selectedTimes, activeEvaluation, skipped, setFile, skipVideo } = useVideoFiles();
+  const { files, selectedTimes, activeEvaluation, skipped, setFile, skipVideo, uploading, loadingVideos } = useVideoFiles();
   const selectedFile = files[number];
   const config = uploadCopy[number];
   const [duration, setDuration] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [message, setMessage] = useState("");
   const [hasError, setHasError] = useState(false);
+  const [storageConsent, setStorageConsent] = useState(false);
 
   useEffect(() => {
     if (!selectedFile) return;
@@ -39,28 +40,32 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     };
   }, [selectedFile]);
 
-  function selectFile(file: File | undefined) {
+  async function selectFile(file: File | undefined) {
     if (!file) return;
+    if (!storageConsent || uploading) { setMessage("영상 저장에 동의한 뒤 파일을 선택해 주세요."); setHasError(true); return; }
     if (!isVideoFile(file)) {
       setMessage("영상 파일을 선택해 주세요.");
       setHasError(true);
       return;
     }
-    setFile(number, file);
-    setDuration(null);
-    setMessage("");
-    setHasError(false);
+    setMessage("비공개 저장소에 영상 저장 중..."); setHasError(false);
+    try {
+      await setFile(number, file);
+      setDuration(null); setMessage("영상이 저장되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "영상을 저장하지 못했습니다. 다시 선택해 주세요."); setHasError(true);
+    }
   }
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
-    selectFile(event.target.files?.[0]);
+    void selectFile(event.target.files?.[0]);
     event.target.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
-    selectFile(event.dataTransfer.files[0]);
+    void selectFile(event.dataTransfer.files[0]);
   }
 
   function handleNext() {
@@ -88,16 +93,21 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
           <p>{config.guide[0]}<br />{config.guide[1]}</p>
         </div>
 
+        <label className="video-storage-consent">
+          <input type="checkbox" checked={storageConsent} onChange={(event) => setStorageConsent(event.target.checked)} disabled={uploading} />
+          촬영 대상자의 동의를 받았으며, 영상을 비공개 저장소에 저장하는 데 동의합니다.
+        </label>
+
         <label
           className={`upload-zone${isDragging ? " upload-zone-dragging" : ""}`}
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
-          <input className="upload-file-input" type="file" accept="video/*,.mov,.mp4,.webm,.m4v" onChange={handleInputChange} aria-label={`영상 ${number} 선택`} />
+          <input className="upload-file-input" type="file" accept="video/*,.mov,.mp4,.webm,.m4v" onChange={handleInputChange} aria-label={`영상 ${number} 선택`} disabled={!storageConsent || uploading || loadingVideos} />
           <span className="upload-plus" aria-hidden="true">+</span>
           <span className="upload-title">{selectedFile ? `영상 ${number} 교체` : `영상 ${number} 선택`}</span>
-          <span className="upload-hint">파일을 끌어다 놓거나 선택하세요</span>
+          <span className="upload-hint">50 MB 이하 · {uploading ? "저장 중..." : loadingVideos ? "저장된 영상 불러오는 중..." : "파일을 끌어다 놓거나 선택하세요"}</span>
         </label>
 
         {selectedFile && (
@@ -109,8 +119,8 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
 
         <p className="shooting-note">{config.note}</p>
 
-        <button className="next-button" type="button" onClick={handleNext}>{config.nextLabel} <span aria-hidden="true">→</span></button>
-        <button className="upload-skip" type="button" onClick={() => { skipVideo(number); router.push(config.nextPath); }}>이 작업은 하지 않아요 · 건너뛰기</button>
+        <button className="next-button" type="button" onClick={handleNext} disabled={uploading || loadingVideos}>{config.nextLabel} <span aria-hidden="true">→</span></button>
+        <button className="upload-skip" type="button" disabled={uploading || loadingVideos} onClick={() => { skipVideo(number); router.push(config.nextPath); }}>이 작업은 하지 않아요 · 건너뛰기</button>
         {message && <p className={`form-status${hasError ? " form-status-error" : ""}`} role={hasError ? "alert" : "status"}>{message}</p>}
       </section>
     </EvaluationShell>

@@ -1,6 +1,8 @@
 export type VideoNumber = 1 | 2 | 3;
 export type Evaluation = {
   id: string;
+  assessmentId?: string;
+  pendingSave?: boolean;
   name: string;
   createdAt: string;
   lastPath: string;
@@ -11,6 +13,7 @@ export type Evaluation = {
   confirmedScenes: Record<VideoNumber, boolean>;
 };
 export type DashboardState = {
+  managerId?: string;
   evaluatorName: string;
   activeId: string | null;
   evaluations: Evaluation[];
@@ -64,7 +67,11 @@ export function updateEvaluation(
 ): DashboardState {
   return {
     ...state,
-    evaluations: state.evaluations.map((item) => item.id === id ? change(item) : item),
+    evaluations: state.evaluations.map((item) => {
+      if (item.id !== id) return item;
+      const next = change(item);
+      return next === item ? item : { ...next, pendingSave: true };
+    }),
   };
 }
 
@@ -81,6 +88,7 @@ export function readDashboardState(raw: string | null): DashboardState | null {
       item.selectedTimes && item.answers && item.fileKeys && item.skipped),
     );
     return {
+      managerId: typeof candidate.managerId === "string" ? candidate.managerId : undefined,
       evaluatorName: candidate.evaluatorName,
       activeId: typeof candidate.activeId === "string" && evaluations.some((item) => item.id === candidate.activeId)
         ? candidate.activeId : null,
