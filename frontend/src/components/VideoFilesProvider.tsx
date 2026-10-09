@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type VideoNumber, type WorkContext } from "@/lib/evaluationStore";
+import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber, type WorkContext } from "@/lib/evaluationStore";
+import { supabase } from "@/lib/supabaseClient";
 
 export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
@@ -10,11 +11,12 @@ const emptyAnswers = (): Record<VideoNumber, Record<string, string>> => ({ 1: {}
 const emptyTimes = (): Record<VideoNumber, number | null> => ({ 1: null, 2: null, 3: null });
 
 type ContextValue = {
-  dashboard: DashboardState; ready: boolean; storageError: boolean; activeEvaluation: Evaluation | null;
+  dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
   files: VideoFiles; selectedTimes: Record<VideoNumber, number | null>;
   answers: Record<VideoNumber, Record<string, string>>; skipped: Record<VideoNumber, boolean>;
   activeVideos: VideoNumber[]; demoMode: boolean; resultVideo: VideoNumber;
-  setEvaluatorName: (name: string) => void; addPerson: (name: string) => void;
+  setEvaluatorName: (name: string) => Promise<void>; addPerson: (name: string) => Promise<void>;
+  logOut: () => Promise<void>;
   selectPerson: (id: string) => string; setWork: (work: WorkContext) => void; savePath: (path: string) => void;
   setFile: (number: VideoNumber, file: File) => void; skipVideo: (number: VideoNumber) => void;
   setSelectedTime: (number: VideoNumber, time: number) => void;
@@ -27,7 +29,9 @@ const VideoFilesContext = createContext<ContextValue | null>(null);
 export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [dashboard, setDashboard] = useState<DashboardState>(() => createDashboardState());
   const [ready, setReady] = useState(false);
+  const [canPersist, setCanPersist] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
   const [filesByPerson, setFilesByPerson] = useState<Record<string, VideoFiles>>({});
   const [demoAnswers, setDemoAnswers] = useState(emptyAnswers);
   const [demoTimes, setDemoTimes] = useState(emptyTimes);
@@ -35,18 +39,63 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [resultVideo, setResultVideo] = useState<VideoNumber>(1);
 
   useEffect(() => {
-    try {
-      const saved = readDashboardState(localStorage.getItem(dashboardStorageKey));
-      if (saved) setDashboard(saved);
-    } catch { setStorageError(true); }
-    setReady(true);
+    let cancelled = false;
+    async function restore() {
+      try {
+        if (!supabase) throw new Error("DB 설정이 없습니다.");
+        const saved = readDashboardState(localStorage.getItem(dashboardStorageKey)) ?? createDashboardState();
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        let user = sessionData.session?.user ?? null;
+        if (!user && saved.evaluatorName) {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) throw error;
+          user = data.user;
+        }
+        if (!user) { if (!cancelled) setCanPersist(true); return; }
+        const { data: profile, error: profileError } = await supabase.from("managers").select("name").eq("id", user.id).maybeSingle();
+        if (profileError) throw profileError;
+        let managerName = profile?.name ?? "";
+        if (!managerName && saved.evaluatorName) {
+          const { error } = await supabase.from("managers").insert({ id: user.id, name: saved.evaluatorName });
+          if (error) throw error;
+          managerName = saved.evaluatorName;
+        }
+        if (!managerName) { if (!cancelled) setCanPersist(true); return; }
+        const { data: existing, error: peopleError } = await supabase.from("people")
+          .select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false });
+        if (peopleError) throw peopleError;
+        const existingIds = new Set((existing ?? []).map((item) => item.id));
+        const missing = saved.evaluations.filter((item) => !existingIds.has(item.id));
+        if (missing.length) {
+          const { error } = await supabase.from("people").insert(missing.map((item) => ({
+            id: item.id, manager_id: user.id, name: item.name, created_at: item.createdAt,
+          })));
+          if (error) throw error;
+        }
+        const { data: people, error: refreshError } = missing.length
+          ? await supabase.from("people").select("id,name,created_at").eq("manager_id", user.id).order("created_at", { ascending: false })
+          : { data: existing, error: null };
+        if (refreshError) throw refreshError;
+        if (!cancelled) {
+          setDashboard(mergeStoredPeople(saved, managerName, (people ?? []) as StoredPerson[]));
+          setCanPersist(true);
+        }
+      } catch {
+        if (!cancelled) setConnectionError("DB에 연결하지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.");
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    }
+    void restore();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !canPersist) return;
     try { localStorage.setItem(dashboardStorageKey, JSON.stringify(dashboard)); setStorageError(false); }
     catch { setStorageError(true); }
-  }, [dashboard, ready]);
+  }, [dashboard, ready, canPersist]);
 
   const activeEvaluation = dashboard.evaluations.find((item) => item.id === dashboard.activeId) ?? null;
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
@@ -55,15 +104,49 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const skipped = activeEvaluation ? activeEvaluation.skipped : { 1: false, 2: false, 3: false };
   const activeVideos = ([1, 2, 3] as const).filter((number) => demoMode || !skipped[number]);
 
-  function setEvaluatorName(name: string) {
+  async function setEvaluatorName(name: string) {
     const trimmed = name.trim();
-    if (trimmed) setDashboard((current) => ({ ...current, evaluatorName: trimmed }));
+    if (!trimmed || !supabase) throw new Error("DB 설정이 없습니다.");
+    const { data: session } = await supabase.auth.getSession();
+    let user = session.session?.user;
+    if (!user) {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error) throw error;
+      user = data.user ?? undefined;
+    }
+    if (!user) throw new Error("로그인에 실패했습니다.");
+    const { error } = await supabase.from("managers").upsert({ id: user.id, name: trimmed });
+    if (error) throw error;
+    setConnectionError("");
+    setCanPersist(true);
+    setDashboard((current) => ({ ...current, evaluatorName: trimmed }));
   }
 
-  function addPerson(name: string) {
-    setDashboard((current) => addEvaluation(current, name, crypto.randomUUID()));
+  async function addPerson(name: string) {
+    if (!supabase) throw new Error("DB 설정이 없습니다.");
+    const { data: userData, error: authError } = await supabase.auth.getUser();
+    if (authError || !userData.user) throw authError ?? new Error("로그인이 필요합니다.");
+    const id = crypto.randomUUID();
+    const { error } = await supabase.from("people").insert({ id, manager_id: userData.user.id, name: name.trim() });
+    if (error) throw error;
+    setDashboard((current) => addEvaluation(current, name, id));
     setDemoMode(false);
     setResultVideo(1);
+  }
+
+  async function logOut() {
+    if (!supabase) throw new Error("DB 설정이 없습니다.");
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) throw error;
+    try { localStorage.removeItem(dashboardStorageKey); setStorageError(false); }
+    catch { setStorageError(true); }
+    setDashboard(createDashboardState());
+    setFilesByPerson({});
+    setDemoAnswers(emptyAnswers());
+    setDemoTimes(emptyTimes());
+    setDemoMode(false);
+    setResultVideo(1);
+    setConnectionError("");
   }
 
   function selectPerson(id: string): string {
@@ -144,8 +227,8 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setDemoAnswers(emptyAnswers()); setDemoTimes(emptyTimes()); setDemoMode(true); setResultVideo(1);
   }
 
-  return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, activeEvaluation, files, selectedTimes, answers,
-    skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, selectPerson, setWork, savePath, setFile, skipVideo, setSelectedTime,
+  return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
+    skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, setWork, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }
 

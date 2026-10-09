@@ -16,7 +16,7 @@ export default function DashboardPage() {
       <div className="dashboard-panel-heading">
         <div>
           <h2 id="evaluation-list-title">평가 대상자</h2>
-          <p>이 브라우저에 저장된 평가 {dashboard.evaluations.length}건</p>
+          <p>DB에 저장된 평가 대상자 {dashboard.evaluations.length}명</p>
         </div>
       </div>
       {dashboard.evaluations.length ? <div className="dashboard-person-list">
