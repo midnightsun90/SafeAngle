@@ -35,6 +35,11 @@ test("human-reviewed coordinates use geometry without fabricated visibility or 3
   const partial=sceneFromVlm(input);assert.equal(partial.measurements!.lowerArm.value,null);assert.equal(partial.measurements!.wrist.value,null);assert.equal(partial.measurements!.knee.value,0);
   for(const joint of VLM_JOINTS)input.reviewedPoints[joint]=null;
   assert.equal(sceneFromVlm(input).availability.state,"unavailable");
+  const small=evidence();small.reviewedPoints.shoulder={x:.5,y:.46};
+  assert.equal(sceneFromVlm(small).availability.state,"unavailable");
+  const degenerate=evidence();degenerate.reviewedPoints.wrist=degenerate.reviewedPoints.elbow;
+  assert.equal(sceneFromVlm(degenerate).measurements!.lowerArm.value,null);
+  assert.equal(sceneFromVlm(degenerate).measurements!.knee.value,0);
 });
 test("same human-confirmed coordinates and inputs reproduce REBA, edits and missing fields are tracked",()=>{
   const input=evidence(),scene=sceneFromVlm(input),answers=emptyAnswers(scene.key);

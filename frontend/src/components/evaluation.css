@@ -1,4 +1,5 @@
-.sa-evaluation { display:grid; gap:40px; margin-top:34px; }
+.sa-evaluation { display:grid; grid-template-columns:minmax(0,1fr); gap:40px; margin-top:34px; min-width:0; }
+.sa-evaluation > [data-video-active] { min-width:0; }
 .sa-form-card { min-width:0; padding-block:26px; border-top:1px solid var(--line); }
 .sa-evaluation h2 { margin:0 0 20px; font-size:24px; font-weight:750; letter-spacing:-.7px; }
 .sa-evaluation p { line-height:1.7; margin-block:16px; }
@@ -27,7 +28,8 @@
 .sa-evaluation legend { font-weight:750; font-size:19px; padding-right:16px; }
 .sa-link-button,.review-link { text-align:left; color:var(--muted); font-size:14px; text-decoration:underline; width:fit-content; cursor:pointer; display:block; margin-block:15px; }
 .sa-table-scroll { overflow-x:auto; margin-block:26px; }
-.sa-evaluation table { width:100%; border-collapse:collapse; font-size:14px; text-align:left; }
+.sa-evaluation table { width:100%; min-width:520px; border-collapse:collapse; font-size:14px; text-align:left; }
+.sa-next { display:flex; align-items:center; justify-content:center; text-decoration:none; }
 .sa-evaluation caption { text-align:left; color:var(--muted); padding-bottom:14px; }
 .sa-evaluation td,.sa-evaluation th { padding:12px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
 .sa-evaluation th { font-weight:650; }

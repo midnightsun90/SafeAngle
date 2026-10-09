@@ -6,29 +6,20 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
-import { formatVideoTime, isVideoFile } from "@/lib/video";
+import { isVideoFile } from "@/lib/video";
 import { demoImages } from "@/lib/demoImages";
-import EvaluationFlow from "@/components/EvaluationFlow";
-
-function RealEvaluation(){
-  const [stage,setStage]=useState(3);
-  return <EvaluationShell step={String(stage).padStart(2,"0") as "03"|"04"|"06"} stepName={stage===6?"REBA 결과":stage===4?"확인 질문":"영상·장면 확인"} title="선택한 장면을 평가합니다.">
-    <Link className="review-link" href="/upload/1">영상 등록으로 돌아가기 (현재 분석·답변 초기화)</Link>
-    <EvaluationFlow onStage={setStage}/>
-    <Link className="next-button" href="/results">결과 요약 및 상세 평가서 보기 →</Link>
-  </EvaluationShell>;
-}
+import { uploadCopy } from "@/lib/uploadCopy";
 
 const videos: { number: VideoNumber; title: string }[] = [
-  { number: 1, title: "낮은 곳 → 높은 곳" },
-  { number: 2, title: "앉아서 손 작업" },
-  { number: 3, title: "물체 밀기/당기기" },
+  { number: 1, title: uploadCopy[1].title },
+  { number: 2, title: uploadCopy[2].title },
+  { number: 3, title: uploadCopy[3].title },
 ];
 
 function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) {
-  const { files, selectedTimes, demoMode, setFile, setSelectedTime } = useVideoFiles();
+  const { files, demoMode, setFile } = useVideoFiles();
   const file = files[number];
-  const selectedTime = selectedTimes[number];
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -43,17 +34,6 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
       URL.revokeObjectURL(url);
     };
   }, [file]);
-
-  function selectScene() {
-    const video = videoRef.current;
-    if (!video || video.readyState < HTMLMediaElement.HAVE_METADATA) {
-      setError("영상을 재생할 수 없습니다. 파일을 교체해 주세요.");
-      return;
-    }
-    video.pause();
-    setSelectedTime(number, video.currentTime);
-    setError("");
-  }
 
   function replaceVideo(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0];
@@ -95,9 +75,7 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
       )}
 
       <div className="review-actions">
-        <button type="button" onClick={selectScene} disabled={demoMode || !file}>장면 선택</button>
-        <span aria-hidden="true" />
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode}>영상 교체</button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode}>영상 바꾸기</button>
         <input
           ref={fileInputRef}
           className="visually-hidden"
@@ -109,7 +87,6 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
         />
       </div>
       {!demoMode && file && <p className="review-filename" title={file.name}>{file.name}</p>}
-      {!demoMode && selectedTime !== null && <p className="review-scene" role="status">선택한 장면 {formatVideoTime(selectedTime)}</p>}
       {error && <p className="review-error" role="alert">{error}</p>}
     </section>
   );
@@ -117,40 +94,50 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
 
 export default function VideoReview() {
   const router = useRouter();
-  const { files, selectedTimes, demoMode } = useVideoFiles();
+  const { files, demoMode, skipped, activeVideos, setResultVideo } = useVideoFiles();
   const [message, setMessage] = useState("");
   const [hasError, setHasError] = useState(false);
 
   function finishReview() {
     if (demoMode) {
-      router.push("/questions/1/1");
+      router.push("/questions/1/2");
       return;
     }
-    const missing = videos.filter(({ number }) => !files[number] || selectedTimes[number] === null).map(({ number }) => number);
-    if (missing.length > 0) {
-      setMessage(`영상 ${missing.join("·")}의 평가 장면을 선택해 주세요.`);
+    if (activeVideos.length === 0) {
+      setMessage("세 작업 모두 하지 않는 것으로 선택했습니다. 평가할 작업 영상이 없습니다.");
       setHasError(true);
       return;
     }
-    router.push("/questions/1/1");
+    const missing = activeVideos.filter((number) => !files[number]);
+    if (missing.length > 0) {
+      setMessage(`영상 ${missing.join("·")}을 올려주세요.`);
+      setHasError(true);
+      return;
+    }
+    setResultVideo(activeVideos[0]);
+    router.push(`/questions/${activeVideos[0]}/2`);
   }
-
-  if(!demoMode)return <RealEvaluation/>;
 
   return (
     <EvaluationShell
-      step="03"
+      step="02"
       stepName="영상 확인"
-      title="영상을 확인해 주세요"
-      description="세 영상을 재생하고 평가할 장면을 선택하세요."
+      title="올린 영상을 확인해주세요"
+      description="올린 영상이 맞는지 재생해 확인해주세요. 평가할 장면은 분석 후 AI가 추천합니다."
       wide
     >
       {demoMode && <p className="demo-disclaimer">예시 사진으로 보는 화면입니다. 실제 영상이나 분석 결과가 아닙니다.</p>}
       <div className="review-grid">
-        {videos.map((video) => <ReviewVideo key={video.number} {...video} />)}
+        {videos.map((video) => !demoMode && skipped[video.number] ? (
+          <section className="review-item" key={video.number}>
+            <h2>{video.number}. {video.title}</h2>
+            <p>하지 않는 작업 · 건너뛰었습니다.</p>
+            <Link href={`/upload/${video.number}`}>작업 선택 변경</Link>
+          </section>
+        ) : <ReviewVideo key={video.number} {...video} />)}
       </div>
       <div className="review-footer">
-        <button className="next-button" type="button" onClick={finishReview}>확인 완료 · 질문으로 <span aria-hidden="true">→</span></button>
+        <button className="next-button" type="button" onClick={finishReview}>다음: 작업 조건 입력 <span aria-hidden="true">→</span></button>
         {message && <p className={`review-message${hasError ? " form-status-error" : ""}`} role={hasError ? "alert" : "status"}>{message}</p>}
       </div>
     </EvaluationShell>

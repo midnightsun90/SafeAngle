@@ -1,101 +1,37 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles } from "@/components/VideoFilesProvider";
 
-type WorkContext = {
-  company: string;
-  worksite: string;
-  task: string;
-};
-
-const storageKey = "safeangle.recentWorkContexts";
-const emptyContext: WorkContext = { company: "", worksite: "", task: "" };
-
-export default function Home() {
+export default function DashboardPage() {
   const router = useRouter();
-  const { startDemo, startNewEvaluation } = useVideoFiles();
-  const [context, setContext] = useState<WorkContext>(emptyContext);
-  const [saveError, setSaveError] = useState(false);
+  const { dashboard, selectPerson, startDemo } = useVideoFiles();
 
-  function updateField(field: keyof WorkContext, value: string) {
-    setContext((current) => ({ ...current, [field]: value }));
-    setSaveError(false);
-  }
+  return <main className="dashboard-home">
+    <p className="dashboard-eyebrow">대시보드</p>
+    <h1>{dashboard.evaluatorName ? `${dashboard.evaluatorName}님, 안녕하세요` : "SafeAngle 대시보드"}</h1>
+    <p className="dashboard-lead">평가할 사람을 추가하고 작업 자세 평가를 시작하세요.</p>
 
-  function saveContext(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const next = {
-      company: context.company.trim(),
-      worksite: context.worksite.trim(),
-      task: context.task.trim(),
-    };
-    if (!next.company || !next.worksite || !next.task) return;
-
-    try {
-      const stored = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
-      const recent: WorkContext[] = Array.isArray(stored) ? stored : [];
-      const updated = [
-        next,
-        ...recent.filter((item) =>
-          item.company !== next.company || item.worksite !== next.worksite || item.task !== next.task,
-        ),
-      ].slice(0, 8);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      startNewEvaluation();
-      router.push("/upload/1");
-    } catch {
-      setSaveError(true);
-    }
-  }
-
-  return (
-    <EvaluationShell step="01" stepName="회사·작업 정보" title="어떤 작업을 평가하나요?">
-        <form className="work-form" onSubmit={saveContext}>
-          <div className="field">
-            <label htmlFor="company">회사명</label>
-            <input
-              id="company"
-              name="company"
-              type="text"
-              autoComplete="organization"
-              value={context.company}
-              onChange={(event) => updateField("company", event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="worksite">사업장·작업 위치</label>
-            <input
-              id="worksite"
-              name="worksite"
-              type="text"
-              value={context.worksite}
-              onChange={(event) => updateField("worksite", event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="task">공정·작업명</label>
-            <input
-              id="task"
-              name="task"
-              type="text"
-              value={context.task}
-              onChange={(event) => updateField("task", event.target.value)}
-              required
-            />
-          </div>
-
-          <button className="next-button" type="submit">다음: 영상 올리기 <span aria-hidden="true">→</span></button>
-          {saveError && <p className="form-status form-status-error" role="alert">이 브라우저에 작업 정보를 저장할 수 없습니다. 저장 공간 설정을 확인해 주세요.</p>}
-        </form>
-        <button className="demo-entry" type="button" onClick={() => { startDemo(); router.push("/review"); }}>예시 사진으로 화면 둘러보기</button>
-    </EvaluationShell>
-  );
+    <section className="dashboard-panel" aria-labelledby="evaluation-list-title">
+      <div className="dashboard-panel-heading">
+        <div>
+          <h2 id="evaluation-list-title">평가 대상자</h2>
+          <p>DB에 저장된 평가 대상자 {dashboard.evaluations.length}명</p>
+        </div>
+      </div>
+      {dashboard.evaluations.length ? <div className="dashboard-person-list">
+        {dashboard.evaluations.map((person) => <button key={person.id} type="button" onClick={() => router.push(selectPerson(person.id))}>
+          <span className="person-avatar" aria-hidden="true">{person.name.slice(0, 1)}</span>
+          <span className="person-details"><strong>{person.name}</strong><small>작업 자세 평가</small></span>
+          <span className="person-progress">{person.lastPath === "/upload/1" && Object.values(person.fileKeys).every((key) => key === null) ? "시작 전" : "이어서 평가"}</span>
+          <span aria-hidden="true">→</span>
+        </button>)}
+      </div> : <div className="dashboard-empty">
+        <span className="dashboard-empty-icon" aria-hidden="true">＋</span>
+        <h3>아직 추가한 평가가 없습니다</h3>
+        <p>왼쪽의 평가 추가 버튼으로 첫 평가를 시작하세요.</p>
+      </div>}
+    </section>
+    <button className="dashboard-demo" type="button" onClick={() => { startDemo(); router.push("/review"); }}>예시 사진으로 화면 둘러보기 →</button>
+  </main>;
 }

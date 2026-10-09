@@ -8,11 +8,17 @@ import { demoImages } from "@/lib/demoImages";
 import { formatVideoTime } from "@/lib/video";
 
 export default function ScenePreview({ number }: { number: VideoNumber }) {
-  const { files, selectedTimes, demoMode } = useVideoFiles();
+  const { files, selectedTimes, demoMode, rebaResults } = useVideoFiles();
+  const evidence=rebaResults[number]?.evidence;
   const file = files[number];
   const selectedTime = selectedTimes[number];
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && video.readyState >= 1 && selectedTime !== null) video.currentTime = selectedTime;
+  }, [selectedTime]);
 
   useEffect(() => {
     if (!file || demoMode) return;
@@ -28,6 +34,8 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
     <div className="scene-preview">
       {demoMode ? (
         <Image src={demoImages[number]} alt={`영상 ${number} 작업 예시 사진`} fill unoptimized sizes="370px" />
+      ) : evidence ? (
+        <img src={evidence.imageDataUrl} alt={`영상 ${number}의 평가에 사용한 대표 장면`} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
       ) : file ? (
         <video
           ref={videoRef}

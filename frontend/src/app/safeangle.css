@@ -67,41 +67,6 @@
   line-height: 1.5;
 }
 
-.work-form {
-  display: grid;
-  gap: 42px;
-  margin-top: 58px;
-}
-
-.field {
-  display: grid;
-  gap: 17px;
-}
-
-.field label {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -.55px;
-}
-
-.field input {
-  width: 100%;
-  height: 64px;
-  padding: 0 18px;
-  border: 1px solid #d5dae3;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--ink);
-  font-size: 18px;
-  outline: none;
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-
-.field input:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(255 90 20 / 13%);
-}
-
 .next-button {
   width: 100%;
   min-height: 72px;
@@ -131,6 +96,9 @@
 .form-status-error { color: #ba3210; }
 
 .upload-content { margin-top: 56px; }
+.shooting-guide .filming-notice { margin-bottom: 28px; color: var(--ink); }
+.upload-skip { display: block; margin: 18px auto 24px; padding: 10px; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+.upload-skip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 .shooting-guide h2 {
   margin: 0 0 17px;
@@ -441,10 +409,6 @@
   .page-main { margin-top: 72px; }
   .step-label { font-size: 14px; }
   .work-intro h1 { letter-spacing: -1.6px; }
-  .work-form { gap: 30px; margin-top: 44px; }
-  .field { gap: 12px; }
-  .field label { font-size: 16px; }
-  .field input { height: 56px; font-size: 16px; }
   .next-button { min-height: 60px; font-size: 18px; }
   .upload-content { margin-top: 44px; }
   .shooting-guide h2 { font-size: 16px; }
@@ -480,3 +444,12 @@
   .report-item-table { min-width: 650px; }
   .report-formula { grid-template-columns: 1fr; gap: 13px; }
 }
+
+.confirmation-content { max-width: 720px; margin: 32px auto; line-height: 1.6; }
+.confirmation-content > h2 { font-size: 20px; }
+.confirmation-content > .scene-preview { max-width: 614px; }
+.confirmation-conditions { margin: 24px 0; font-size: 14px; }
+.confirmation-conditions > div { border-bottom: 1px solid var(--line); padding: 12px 0; }
+.confirmation-conditions dt { font-weight: 600; }
+.confirmation-conditions dd { margin: 4px 0 0; color: var(--muted); }
+.next-button:disabled { background: #e5e7eb; color: #6b7280; cursor: not-allowed; }

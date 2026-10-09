@@ -48,6 +48,7 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
   const {files,replaceFiles}=useVideoFiles();
   const videos=useMemo(()=>Object.entries(files).filter(([,file])=>file!==null).map(([number,file])=>({number:Number(number) as VideoNumber,file:file!,id:crypto.randomUUID()})),[files]);
   const [active,setActive]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{setActive(0);setBusy(false);setError("");onStage(3);},[files,onStage]);
   function choose(files:FileList|null){
     if(!files?.length)return;
     if(files.length>3){setError("한 번에 최대 3편을 선택하십시오. 실제 작업에 있는 영상 한 편부터 평가할 수 있습니다.");return;}
@@ -84,7 +85,7 @@ function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:Vid
   useEffect(()=>publishResult(number,score),[number,score,publishResult]);
   useEffect(()=>{if(active&&answers)onStage(score?.status==="complete"?6:4);},[active,answers,score?.status,onStage]);
   function invalidate(){controller.current?.abort();revision.current++;setProposal(null);setPoints(null);setCoords(null);setImage("");setEvidence(null);setAnswers(null);setReviewChecked(false);setPhase("대표 장면 선택");setError("");onStage(3);}
-  function clearConfirmation(){setEvidence(null);setAnswers(null);setReviewChecked(false);onStage(3);}
+  function clearConfirmation(){setEvidence(null);setAnswers(null);setReviewChecked(false);setError("");onStage(3);}
   function editPoint(name:VlmJoint,point:VlmPoints[VlmJoint]){setPoints(old=>old?{...old,[name]:point}:old);clearConfirmation();}
   function coordinate(name:VlmJoint,axis:"x"|"y",value:string){
     if(!coords)return;const next={...coords[name],[axis]:value};setCoords({...coords,[name]:next});
@@ -110,7 +111,7 @@ function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:Vid
     if(!proposal||!points||!reviewChecked)return;
     const checked:VlmEvidence={requestId:proposal.requestId,imageDataUrl:image,capture:proposal.capture,provenance:proposal.provenance,originalPoints:proposal.points,reviewedPoints:points,confirmedBy:"human"};
     const selected=sceneFromVlm(checked);if(selected.availability.state!=="ready"){setError(selected.availability.reasons.join(" "));return;}
-    setEvidence(checked);setAnswers(emptyAnswers(selected.key));onStage(4);
+    setError("");setEvidence(checked);setAnswers(emptyAnswers(selected.key));onStage(4);
   }
   function setField<K extends AnswerName>(name:K,value:Confirmation<AnswerValues[K]>){setAnswers(old=>old?{...old,fields:{...old.fields,[name]:value}}:old);}
   function chooseField<K extends AnswerName>(name:K,value:string,parse:(v:string)=>AnswerValues[K],observable=false){
