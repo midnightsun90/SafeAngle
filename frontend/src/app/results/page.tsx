@@ -60,7 +60,7 @@ export default function ResultsPage() {
           </>}
           {answer && <details className="pose-results-answers"><summary>사람이 입력한 작업 조건</summary><dl>{questions.map((question) => <div key={question.key}><dt>{question.label}</dt><dd>{question.options.find((option) => option.value === answer[question.key])?.label ?? "미입력"}</dd></div>)}</dl></details>}
         </div>}
-        <div className="pose-results-footer"><Link href="/analysis">대표 장면 평가하기</Link><Link href="/review">영상 확인으로 돌아가기</Link></div>
+        <div className="pose-results-footer"><Link className="pose-results-report-link" href="/report" onClick={() => { if (selected) setResultVideo(selected); }}>상세 평가서 보기 →</Link><Link href="/analysis">대표 장면 평가하기</Link><Link href="/review">영상 확인으로 돌아가기</Link></div>
       </>}
     </div>
   </EvaluationShell>;
