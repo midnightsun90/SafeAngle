@@ -146,7 +146,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       <div className={`dashboard-content${modalOpen ? " dashboard-content-blurred" : ""}`} aria-hidden={modalOpen} inert={modalOpen}>
         {storageError && <p className="dashboard-storage-error" role="alert">브라우저에 저장하지 못했습니다. 저장 공간 설정을 확인해 주세요.</p>}
         {connectionError && <p className="dashboard-storage-error" role="alert">{connectionError}</p>}
-        {needsVideoAgain && pathname !== "/" && <p className="dashboard-storage-error" role="status">이전에 선택한 영상은 다시 골라야 합니다. <Link href="/upload/1">영상 다시 선택하기 →</Link></p>}
+        {needsVideoAgain && pathname !== "/" && <p className="dashboard-storage-error" role="status">이전에 선택한 영상은 다시 골라야 합니다. <Link className="confirmation-soft-button" href="/upload/1">영상 다시 선택하기 →</Link></p>}
         {children}
       </div>
     </div>

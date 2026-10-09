@@ -56,7 +56,7 @@ export default function ResultsPage() {
       </section>
       <div className="results-footer">
         <Link className="next-button" href="/report" onClick={()=>setResultVideo(selected)}>상세 평가서 보기 <span aria-hidden="true">→</span></Link>
-        {!demoMode&&<Link href="/analysis">영상·답변 다시 평가 (이전 분석·답변 초기화)</Link>}
+        {!demoMode&&<Link className="confirmation-soft-button" href="/analysis">영상·답변 다시 평가 (이전 분석·답변 초기화)</Link>}
         <p>항목별 판정 · 전체 평가표 · 계산 과정</p>
       </div>
     </EvaluationShell>

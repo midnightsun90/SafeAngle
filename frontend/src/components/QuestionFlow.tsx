@@ -48,7 +48,7 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
       wide
     >
       {demoMode && <p className="demo-disclaimer">예시 사진으로 보는 질문 화면입니다. 답변과 사진으로 실제 점수를 계산하지 않습니다.</p>}
-      {!ready && <p className="question-warning">작업 영상이 없습니다. <Link href="/review">영상 확인 화면으로 돌아가기</Link></p>}
+      {!ready && <p className="question-warning">작업 영상이 없습니다. <Link className="confirmation-soft-button" href="/review">영상 확인 화면으로 돌아가기</Link></p>}
       <form className="question-form" onSubmit={continueToNext} noValidate>
         <div className="question-grid">
           {group.questions.map((question) => (

@@ -56,7 +56,7 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
   useEffect(()=>{setActive(0);setBusy(false);onStage(3);},[identity,activeEvaluation?.id,onStage]);
   return <section className="sa-evaluation" aria-label="작업 영상 REBA 평가">
     <div className="sa-form-card" id="evaluation-videos"><h2>평가할 영상</h2><p>같은 장면의 목·팔·다리를 함께 평가합니다. 원본 영상은 기존 업로드 단계에서 비공개 저장소에 보관하고, 동의한 대표 장면 한 장만 GPT로 전송합니다.</p>
-      <Link href="/upload/1">영상 등록·교체 (각 60초·50MB 이내)</Link>
+      <Link className="confirmation-soft-button" href="/upload/1">영상 등록·교체 (각 60초·50MB 이내)</Link>
       <p className="sa-muted">측면에서 한 사람의 전신과 손목을 담아 주세요. 좌표와 점수는 이 탭에서만 유지됩니다. 새로고침한 뒤에는 저장된 영상의 장면을 다시 분석하십시오.</p>
       {!!videos.length&&<div className="sa-video-tabs" role="tablist" aria-label="영상별 평가">{videos.map((v,i)=><button type="button" role="tab" aria-selected={active===i} key={v.id} disabled={busy} onClick={()=>{setActive(i);onStage(3);}}>영상 {v.number} · {v.name}</button>)}</div>}
     </div>

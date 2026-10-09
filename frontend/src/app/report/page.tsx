@@ -76,7 +76,7 @@ export default function ReportPage() {
 
   return (
     <EvaluationShell step="07" stepName="상세 평가서" title="REBA 상세 평가서" wide introFull beforeIntro={<div className="report-topline">
-        <Link href="/results">← 결과 요약으로</Link>
+        <Link className="confirmation-soft-button" href="/results">← 결과 요약으로</Link>
         {demoMode && <span className="sample-badge">시안용 예시</span>}
       </div>}>
       <div className="report-heading">

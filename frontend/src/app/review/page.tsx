@@ -64,7 +64,7 @@ function ReviewVideo({ number, title, onUploadingChange }: { number: VideoNumber
       ) : (
         <div className="review-empty">
           <p>영상 {number}을 먼저 선택해 주세요.</p>
-          <Link href={`/upload/${number}`}>영상 선택하기</Link>
+          <Link className="confirmation-soft-button" href={`/upload/${number}`}>영상 선택하기</Link>
         </div>
       )}
 
@@ -133,7 +133,7 @@ export default function VideoReview() {
           <section className="review-item" key={video.number}>
             <h2>{video.number}. {video.title}</h2>
             <p>하지 않는 작업 · 건너뛰었습니다.</p>
-            <Link href={`/upload/${video.number}`}>작업 선택 변경</Link>
+            <Link className="confirmation-soft-button" href={`/upload/${video.number}`}>작업 선택 변경</Link>
           </section>
         ) : <ReviewVideo key={video.number} {...video} onUploadingChange={updateUploading} />)}
       </div>

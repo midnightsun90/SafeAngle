@@ -9,7 +9,7 @@ export default function AnalysisPage() {
  const [stage,setStage]=useState(3);
  const { files, answers, demoMode, activeVideos, activeEvaluation } = useVideoFiles();
  const incomplete = activeVideos.filter(n => !files[n] || workQuestionKeys.some(k => !answers[n][k]));
- if(!demoMode&&!activeEvaluation)return <EvaluationShell step="04" stepName="대표 장면 평가" title="평가 대상자를 먼저 선택하십시오"><Link href="/">대상자 목록으로 →</Link></EvaluationShell>;
+ if(!demoMode&&!activeEvaluation)return <EvaluationShell step="04" stepName="대표 장면 평가" title="평가 대상자를 먼저 선택하십시오"><Link className="confirmation-soft-button" href="/">대상자 목록으로 →</Link></EvaluationShell>;
  if(!demoMode)return <EvaluationShell step={stage===6?"06":stage>=4?"05":"04"} stepName="대표 장면 평가" title="대표 장면의 관절을 확인합니다">
  <EvaluationFlow onStage={setStage}/><Link className="next-button sa-next" href="/results">결과 요약 및 상세 평가서 보기 →</Link>
  </EvaluationShell>;
@@ -18,8 +18,8 @@ export default function AnalysisPage() {
  <ol className="analysis-stages">{["영상 확인", "자세 측정", "장면 추천"].map((title,index) => <li key={title}><span className="analysis-stage-number">{index+1}</span><strong>{title}</strong><span className="analysis-stage-status">{demoMode ? "예시" : "대기"}</span></li>)}</ol>
  {!demoMode && incomplete.length > 0 && <p role="alert">영상 또는 작업 조건 입력이 필요합니다: 영상 {incomplete.join("·")}</p>}
  {!demoMode && activeVideos.length === 0 && <p role="alert">평가할 작업 영상이 없습니다.</p>}
- <div className="analysis-actions"><Link href="/review">분석 취소 · 영상 확인으로</Link></div>
- {demoMode && <Link className="next-button" href="/confirmation">예시 추천 장면 확인하기 →</Link>}
- {!demoMode && incomplete.length === 0 && activeVideos.length > 0 && <Link className="next-button" href="/confirmation">직접 장면 선택하기 →</Link>}
+ <div className="analysis-actions"><Link className="confirmation-soft-button" href="/review">분석 취소 · 영상 확인으로</Link></div>
+ {demoMode && <Link className="confirmation-soft-button" href="/confirmation">예시 추천 장면 확인하기 →</Link>}
+ {!demoMode && incomplete.length === 0 && activeVideos.length > 0 && <Link className="confirmation-soft-button" href="/confirmation">직접 장면 선택하기 →</Link>}
  </div></EvaluationShell>;
 }
