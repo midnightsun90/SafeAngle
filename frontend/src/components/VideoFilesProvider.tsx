@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { addEvaluation, createDashboardState, dashboardStorageKey, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber } from "@/lib/evaluationStore";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
-import { restoreAssessments, saveAssessmentInputs, uploadAssessmentVideo, downloadAssessmentVideos } from "@/lib/assessmentStorage";
+import { restoreAssessments, saveAssessmentInputs, uploadAssessmentVideo, downloadAssessmentVideos, persistAnalysisResult, restoreAnalysisResults } from "@/lib/assessmentStorage";
 
 export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
@@ -26,6 +26,8 @@ function writeDemoSession(enabled: boolean): void {
 type ContextValue = {
   cloudStatus: "idle" | "saving" | "saved" | "error"; cloudError: string; uploading: boolean; loadingVideos: boolean;
   retrySave: () => Promise<void>; retryVideos: () => void;
+  storedResults: Partial<Record<VideoNumber, unknown>>;
+  persistResult: (number: VideoNumber, result: unknown) => Promise<void>;
   dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
   files: VideoFiles; selectedTimes: Record<VideoNumber, number | null>;
   answers: Record<VideoNumber, Record<string, string>>; skipped: Record<VideoNumber, boolean>;
@@ -60,12 +62,15 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [uploading, setUploading] = useState(false);
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [videoReload, setVideoReload] = useState(0);
+  const [storedResults, setStoredResults] = useState<Partial<Record<VideoNumber, unknown>>>({});
   const latest = useRef(dashboard);
   latest.current = dashboard;
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pendingJobs = useRef(0);
   const accountEpoch = useRef(0);
   const uploadInFlight = useRef(false);
+  const pendingResults = useRef(new Map<string, { id: string; number: VideoNumber; result: unknown; fingerprint: string }>());
+  const inputFingerprint = (item: Evaluation) => JSON.stringify([item.fileKeys, item.selectedTimes, item.answers, item.skipped]);
 
   function enqueue<T>(job: () => Promise<T>): Promise<T> {
     const epoch = accountEpoch.current;
@@ -97,6 +102,32 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
         setDashboard((current) => ({ ...current, evaluations: current.evaluations.map((item) =>
           item.id === snapshot.id && JSON.stringify(item) === JSON.stringify(snapshot) ? { ...item, pendingSave: false } : item) }));
       }
+      for (const [key, pending] of pendingResults.current) {
+        const item = latest.current.evaluations.find((row) => row.id === pending.id);
+        if (!item || inputFingerprint(item) !== pending.fingerprint) { pendingResults.current.delete(key); continue; }
+        await persistAnalysisResult(supabase, state.managerId, item, pending.number, pending.result);
+        if (pendingResults.current.get(key) === pending) pendingResults.current.delete(key);
+        if (latest.current.activeId === item.id) setStoredResults((current) => ({ ...current, [pending.number]: pending.result }));
+      }
+    });
+  }
+
+  async function persistResult(number: VideoNumber, result: unknown): Promise<void> {
+    const id = latest.current.activeId;
+    const original = latest.current.evaluations.find((row) => row.id === id);
+    if (!original) throw new Error("평가를 선택해 주세요.");
+    const key = `${id}:${number}`;
+    const pending = { id: original.id, number, result, fingerprint: inputFingerprint(original) };
+    pendingResults.current.set(key, pending);
+    await enqueue(async () => {
+      const state = latest.current;
+      const item = state.evaluations.find((row) => row.id === id);
+      if (!supabase || !state.managerId || !item) throw new Error("평가와 로그인 상태를 확인해 주세요.");
+      if (inputFingerprint(item) !== pending.fingerprint) { if (pendingResults.current.get(key) === pending) pendingResults.current.delete(key); throw new Error("입력이 변경되어 이전 결과를 저장하지 않았습니다."); }
+      await saveAssessmentInputs(supabase, state.managerId, item);
+      await persistAnalysisResult(supabase, state.managerId, item, number, result);
+      if (pendingResults.current.get(key) === pending) pendingResults.current.delete(key);
+      if (latest.current.activeId === id) setStoredResults((current) => ({ ...current, [number]: result }));
     });
   }
 
@@ -157,11 +188,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }, [dashboard, ready, canPersist]);
 
   useEffect(() => {
-    if (!uploading && !dashboard.evaluations.some((item) => item.pendingSave)) return;
+    if (!uploading && !pendingResults.current.size && !dashboard.evaluations.some((item) => item.pendingSave)) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dashboard, uploading]);
+  }, [dashboard, uploading, cloudStatus]);
 
   useEffect(() => {
     if (!ready || !canPersist || !dashboard.managerId || !dashboard.evaluations.some((item) => item.pendingSave)) return;
@@ -179,6 +210,17 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const skipped = activeEvaluation ? activeEvaluation.skipped : { 1: false, 2: false, 3: false };
   const activeVideos = ([1, 2, 3] as const).filter((number) => demoMode || !skipped[number]);
   const activePaths = JSON.stringify(activeEvaluation?.fileKeys ?? {});
+
+  useEffect(() => {
+    let cancelled = false;
+    setStoredResults({});
+    if (!activeEvaluation?.assessmentId || activeEvaluation.pendingSave || !supabase || !dashboard.managerId || demoMode) return;
+    void restoreAnalysisResults(supabase, dashboard.managerId, activeEvaluation).then((results) => {
+      if (!cancelled) setStoredResults(results);
+    }).catch(() => { if (!cancelled) setCloudError("저장된 분석 결과를 불러오지 못했습니다."); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard.activeId, dashboard.managerId, activeEvaluation?.pendingSave, activePaths, JSON.stringify(activeEvaluation?.selectedTimes), JSON.stringify(activeEvaluation?.answers), JSON.stringify(activeEvaluation?.skipped), demoMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,10 +280,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   async function logOut() {
     if (!supabase) throw new Error("DB 설정이 없습니다.");
     await queue.current.catch(() => {});
-    if (latest.current.evaluations.some((item) => item.pendingSave)) await retrySave();
+    if (pendingResults.current.size || latest.current.evaluations.some((item) => item.pendingSave)) await retrySave();
     const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw error;
     accountEpoch.current++;
+    pendingResults.current.clear();
     try { localStorage.removeItem(dashboardStorageKey); setStorageError(false); }
     catch { setStorageError(true); }
     setDashboard(createDashboardState());
@@ -362,7 +405,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     })));
   }
 
-  return <VideoFilesContext.Provider value={{ cloudStatus, cloudError, uploading, loadingVideos, retrySave, retryVideos: () => setVideoReload((value) => value + 1), dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
+  return <VideoFilesContext.Provider value={{ storedResults, persistResult, cloudStatus, cloudError, uploading, loadingVideos, retrySave, retryVideos: () => setVideoReload((value) => value + 1), dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
     confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }

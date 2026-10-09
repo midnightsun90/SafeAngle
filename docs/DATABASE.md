@@ -57,13 +57,13 @@ v6의 **Q4-3은 분석 후 필요할 때 장면을 보며 확인**한다고 적�
 
 ## 아직 연결하지 않은 것
 
-- 분석 이후의 측정값·점수·결과 저장 기능.
+- 원 세션의 실제 VLM 결과 발행부와 저장 콜백 연결. 이 브랜치는 `persistResult`와 `storedResults`를 제공하며, 실제 분석 엔진은 원 세션에서 통합한다.
 - 다른 기기에서 기존 관리자 기록에 접근할 수 있는 계정 로그인 방식.
 - 영상 파일 형식 제한. 현재 저장소는 파일 형식을 제한하지 않는다.
 
 ## 영상·평가 입력 연결 (10/9, `feat/supabase-video-persistence`)
 
-이 브랜치는 기존 표와 RLS를 그대로 사용한다. SQL을 다시 실행하거나 공개 버킷으로 바꾸지 않는다. 타입 검사와 정적 빌드는 통과했으며 실제 원격 업로드·복원·다른 관리자 접근 차단은 아직 실행하지 않았다. 브랜치 병합·배포 전에는 기존 웹 서비스에 적용되지 않는다.
+이 브랜치는 기존 표와 RLS를 그대로 사용한다. SQL을 다시 실행하거나 공개 버킷으로 바꾸지 않는다. 실제 업로드·다운로드·새로고침 복원·다른 관리자 접근 차단을 확인했다. 브랜치 병합·배포 전에는 기존 웹 서비스에 적용되지 않는다. 상세 결과와 재현 방법은 [연결 확인 기록](STORAGE_VERIFICATION.md)에 있다.
 
 - 화면의 대상자 ID(`Evaluation.id`)는 `people.id`다. 별도의 `assessmentId`를 발급해 `assessments.id`와 연결한다. 대상자를 다시 열 때는 가장 최근 평가를 불러온다. 평가 이력 선택 화면은 추가하지 않았다.
 - 영상 저장에 동의한 다음 파일을 선택한다. 비공개 경로는 `{manager_id}/{assessment_id}/{무작위 파일명}`이며, 0바이트 파일과 50 MiB 초과 파일은 업로드 전에 거부한다.
@@ -76,5 +76,14 @@ v6의 **Q4-3은 분석 후 필요할 때 장면을 보며 확인**한다고 적�
 - 예시 둘러보기는 DB에 평가·영상 데이터를 저장하지 않는다. 다른 기기에서 같은 익명 관리자 기록을 되찾는 기능과 자동 보관 기간 정책은 이번 변경에 포함하지 않았다.
 
 원 세션 통합 대상: `frontend/src/lib/assessmentStorage.ts`, `evaluationStore.ts`, `VideoFilesProvider.tsx`, 영상 업로드·교체 화면, 저장 상태 표시. 엔진은 영상 `File`, 대상자 `id`, 별도 `assessmentId`, 영상 번호를 유지해야 한다. 이 브랜치의 `setFile`은 업로드 완료를 기다리는 `Promise<void>`다.
+
+### 분석 결과 연결 계약
+
+- VLM 확인·REBA 계산 뒤 `await persistResult(videoNumber, rebaResult)`를 호출한다. 기존 동기 `publishResult`는 화면 갱신용으로 유지하고, 사용자 확정 시 저장 콜백을 연결한다. 매 프레임·매 렌더마다 저장하지 않는다.
+- `result.scene.timeSec`는 현재 영상의 `selectedTimes[videoNumber]`와 일치해야 한다. 입력 저장도 같은 순서 큐에서 선행한다.
+- 미확정·측정 불가 결과는 최종 점수가 null이어야 한다. VLM 출처의 결과는 같은 장면에 대한 `confirmedBy: human` 근거가 필요하다. 동의 전 API 응답을 확인된 결과로 저장하지 않는다.
+- `assessments.result`에는 `{schemaVersion: 1, videos: {영상번호: {storagePath, result}}}`를 저장한다. 모델·프롬프트·좌표·사람 수정 근거는 엔진 결과 안의 `evidence`를 보존한다. `measurements.videos`는 부위별 측정·채점 근거를 보관한다.
+- 평가 전체의 `reba_score`는 건너뛰지 않은 영상이 모두 완료됐을 때 그 중 최고 점수다. 하나라도 미확정이면 null과 `needs_review`다. 입력·파일 변경 시 이전 점수와 결과를 무효화한다.
+- `storedResults`는 현재 파일·선택 시각에 맞는 저장 결과다. 타입은 아직 `unknown`이며 원 세션의 `RebaResult` 계약으로 검증한 뒤 평가서에 표시한다. 입력이 미저장 중이면 예전 결과를 불러오지 않는다.
 
 개발용 SQL: [DB 생성 파일](../supabase/migrations/20261009044810_safeangle_core.sql), [v6 평가 입력 추가 파일](../supabase/migrations/20261009051522_assessment_inputs_before_analysis.sql), [회사·작업 입력 삭제 파일](../supabase/migrations/20261009052807_remove_company_work_step.sql). 세 파일의 SQL은 Supabase 화면에서 실행했지만 원격 마이그레이션 이력에는 등록되지 않았다. 다시 실행하기 전에 이력을 맞춰야 한다.
