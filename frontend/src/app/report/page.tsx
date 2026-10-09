@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import EvaluationShell from "@/components/EvaluationShell";
 import PoseScenePreview from "@/components/PoseScenePreview";
 import { usePoseAnalysis } from "@/components/PoseAnalysisProvider";
@@ -11,6 +12,8 @@ import { videoTitles } from "@/lib/resultData";
 import { formatVideoTime } from "@/lib/video";
 import type { Measurement, QualityReason, TrackingWarning } from "../../../../lib/types.ts";
 import "./report.css";
+import { captureFrame } from "@/lib/captureFrame";
+import "./print.css";
 
 const reasonLabels: Record<QualityReason, string> = {
   no_person: "사람이 보이지 않음", multiple_people: "여러 사람 감지", invalid_landmarks: "관절 위치 오류",
@@ -39,16 +42,38 @@ function measurementNote(measurement: Measurement | undefined, coverage: number 
 }
 
 export default function ReportPage() {
-  const { demoMode, activeEvaluation, activeVideos, storedVideos, answers, resultVideo, setResultVideo } = useVideoFiles();
+  const { demoMode, activeEvaluation, activeVideos, storedVideos, answers, resultVideo, setResultVideo, dashboard } = useVideoFiles();
+  const [printing,setPrinting]=useState(false);
+  const [printError,setPrintError]=useState("");
+  const [printFrame,setPrintFrame]=useState<{key:string;image:string}|null>(null);
   const { results, states, retry } = usePoseAnalysis();
   const uploadedVideos = activeVideos.filter((number) => Boolean(storedVideos[number]));
   const selected = uploadedVideos.includes(resultVideo) ? resultVideo : uploadedVideos[0];
   const result = selected ? results[selected] : null;
   const state = selected ? states[selected] : null;
   const answer = selected ? answers[selected] : null;
+  const frameKey=result?`${selected}:${result.timeSec}:${result.analyzedAt}`:"";
+  async function printReport(){
+    setPrinting(true);setPrintError("");
+    try{
+      if(result?.timeSec!=null){
+        const video=document.querySelector<HTMLVideoElement>("main .scene-preview video");
+        if(!video)throw new Error("영상을 불러온 뒤 다시 저장하십시오.");
+        const frame=await captureFrame(video,result.timeSec,AbortSignal.timeout(7000));
+        setPrintFrame({key:frameKey,image:frame.imageDataUrl});
+      }
+      await document.fonts.ready;
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+      await Promise.all(Array.from(document.querySelectorAll<HTMLImageElement>("main img"),image=>image.decode()));
+      window.print();
+    }catch(error){setPrintError(error instanceof Error?error.message:"평가서를 준비하지 못했습니다. 다시 시도하십시오.");}
+    finally{setPrinting(false);}
+  }
 
   return <EvaluationShell step="07" stepName="상세 평가서" title="작업 자세 상세 평가서" wide introFull
-    beforeIntro={<div className="report-detail-back"><Link href="/results">← 결과 요약으로</Link></div>}>
+    beforeIntro={<div className="report-detail-back"><Link href="/results">← 결과 요약으로</Link><button type="button" className="sa-button" disabled={printing} onClick={()=>void printReport()}>{printing?"평가서 준비 중…":"인쇄 / PDF 저장"}</button></div>}>
+    {printError&&<p className="report-print-error" role="alert">{printError}</p>}
+    <p className="report-print-only">SafeAngle · 평가 대상자: {demoMode?"시안용 예시":activeEvaluation?.name??"미선택"} · 평가자: {dashboard.evaluatorName||"미입력"}</p>
     <div className="report-detail">
       <p className="report-detail-lead">{activeEvaluation?.name ?? "평가 대상자"} · 영상에서 측정한 각도와 직접 입력한 작업 조건입니다.</p>
       <p className="report-detail-notice">각도는 선택된 한 장면의 측정값입니다. 좋음·나쁨 판정과 전체 점수는 아직 적용하지 않았습니다.</p>
@@ -74,7 +99,9 @@ export default function ReportPage() {
           {result && <>
             {result.timeSec !== null && <section className="report-detail-section">
               <div className="report-detail-section-title"><span>01</span><h3>측정 장면</h3></div>
-              <div className="report-detail-scene"><PoseScenePreview number={selected} timeSec={result.timeSec} /></div>
+              <div className="report-detail-scene"><div className="report-screen-frame"><PoseScenePreview number={selected} timeSec={result.timeSec} /></div>
+                {printFrame?.key===frameKey?<img className="report-print-only" src={printFrame.image} alt="평가에 사용한 대표 장면"/>:<p className="report-print-only">대표 장면을 포함하려면 ‘인쇄 / PDF 저장’ 버튼을 사용하십시오.</p>}
+              </div>
             </section>}
 
             <section className="report-detail-section">

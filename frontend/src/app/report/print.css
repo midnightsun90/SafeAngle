@@ -1,0 +1,39 @@
+.report-print-only { display: none; }
+.report-print-error { color: #b42318; }
+.report-detail-back { display: flex; align-items: center; justify-content: space-between; }
+@media print {
+  @page { size: A4 portrait; margin: 14mm; }
+  body:has(.report-detail) { background: white; color: #171717; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body:has(.report-detail) .dashboard-sidebar,
+  body:has(.report-detail) .dashboard-topbar,
+  body:has(.report-detail) .dashboard-storage-error,
+  body:has(.report-detail) .report-detail-back,
+  body:has(.report-detail) .report-detail-tabs,
+  body:has(.report-detail) .report-print-error,
+  body:has(.report-detail) .report-screen-frame { display: none !important; }
+  body:has(.report-detail) .dashboard-main-wrap { margin: 0 !important; width: auto; }
+  body:has(.report-detail) .dashboard-content,
+  body:has(.report-detail) .page,
+  body:has(.report-detail) .report-detail { padding: 0; margin: 0; }
+  body:has(.report-detail) .page-main { display: block; width: 100%; max-width: none; padding: 0; margin: 0; }
+  body:has(.report-detail) .work-intro { width: 100%; margin: 0 0 4mm; }
+  body:has(.report-detail) h1 { font-size: 22pt; }
+  body:has(.report-detail) .report-print-only { display: block; }
+  body:has(.report-detail) p { font-size: 9pt; line-height: 1.5; }
+  body:has(.report-detail) .report-detail-section { padding: 4mm 0; }
+  body:has(.report-detail) .report-detail-section-title { break-after: avoid; }
+  body:has(.report-detail) h3 { font-size: 12pt; }
+  body:has(.report-detail) .report-detail-scene img { width: auto; max-width: 100%; max-height: 65mm; object-fit: contain; }
+  body:has(.report-detail) .report-detail-measurement-head,
+  body:has(.report-detail) .report-detail-measurement { grid-template-columns: 1fr 1.5fr 1.5fr; gap: 3mm; }
+  body:has(.report-detail) .report-detail-measurement { padding: 3mm 0; break-inside: avoid; }
+  body:has(.report-detail) .report-detail-reading strong,
+  body:has(.report-detail) .report-detail-part strong { font-size: 10pt; }
+  body:has(.report-detail) .report-detail-reading small,
+  body:has(.report-detail) .report-detail-part small { font-size: 8pt; }
+  body:has(.report-detail) .report-detail-facts { grid-template-columns: 1fr 1fr; gap: 0 5mm; }
+  body:has(.report-detail) .report-detail-facts div,
+  body:has(.report-detail) .report-detail-answers div { display: flex; padding: 2mm 0; break-inside: avoid; }
+  body:has(.report-detail) dt,
+  body:has(.report-detail) dd { font-size: 9pt; }
+}
