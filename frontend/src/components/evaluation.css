@@ -1,0 +1,41 @@
+.sa-evaluation { display:grid; grid-template-columns:minmax(0,1fr); gap:40px; margin-top:34px; min-width:0; }
+.sa-evaluation > [data-video-active] { min-width:0; }
+.sa-form-card { min-width:0; padding-block:26px; border-top:1px solid var(--line); }
+.sa-evaluation h2 { margin:0 0 20px; font-size:24px; font-weight:750; letter-spacing:-.7px; }
+.sa-evaluation p { line-height:1.7; margin-block:16px; }
+.sa-muted { color:var(--muted); font-size:14px; }
+.sa-error { color:#b91c1c; padding:12px; border:1px solid #fecaca; border-radius:8px; }
+.sa-evaluation-head,.sa-controls,.sa-video-tabs,.sa-score-header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:space-between; }
+.sa-video-tabs { justify-content:flex-start; margin-top:20px; }
+.sa-video-tabs button { border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:14px; max-width:100%; overflow-wrap:anywhere; }
+.sa-video-tabs button[aria-selected=true] { font-weight:700; border-color:var(--ink); }
+.sa-button { padding:13px 18px; border:0; border-radius:8px; color:white; background:var(--accent); font:inherit; font-weight:650; cursor:pointer; }
+.sa-button[data-variant=outline] { color:var(--ink); background:white; border:1px solid var(--line); }
+.sa-button:disabled { cursor:not-allowed; opacity:.45; }
+.sa-video-stage { position:relative; width:min(100%,560px); margin:26px auto; background:#171717; border-radius:8px; overflow:hidden; }
+.sa-video-stage video { width:100%; height:100%; object-fit:contain; display:block; }
+.sa-video-stage canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.sa-scene-controls { display:grid; gap:20px; }
+.sa-scene-controls label { display:grid; gap:10px; font-size:15px; }
+.sa-scene-controls input { width:100%; accent-color:var(--ink); }
+.sa-scene-controls select,.sa-question select,.sa-question input { border:1px solid #d5dae3; background:white; border-radius:8px; padding:13px; width:100%; font:inherit; color:var(--ink); min-height:48px; }
+.sa-question input:focus-visible,.sa-question select:focus-visible,.sa-scene-controls select:focus-visible,.sa-evaluation button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.sa-question { display:grid; gap:12px; font-size:16px; margin-block:18px; min-width:0; }
+.sa-question input[type=checkbox] { width:20px; height:20px; min-height:0; padding:0; margin-right:10px; vertical-align:middle; accent-color:var(--accent); }
+.sa-evaluation td input { border:1px solid var(--line); border-radius:6px; padding:10px; min-height:44px; font:inherit; }
+.sa-question-grid { display:grid; gap:14px; }
+.sa-evaluation fieldset { border:0; border-top:1px solid var(--line); padding:24px 0; margin-block:30px; }
+.sa-evaluation legend { font-weight:750; font-size:19px; padding-right:16px; }
+.sa-link-button,.review-link { text-align:left; color:var(--muted); font-size:14px; text-decoration:underline; width:fit-content; cursor:pointer; display:block; margin-block:15px; }
+.sa-table-scroll { overflow-x:auto; margin-block:26px; }
+.sa-evaluation table { width:100%; min-width:520px; border-collapse:collapse; font-size:14px; text-align:left; }
+.sa-next { display:flex; align-items:center; justify-content:center; text-decoration:none; }
+.sa-evaluation caption { text-align:left; color:var(--muted); padding-bottom:14px; }
+.sa-evaluation td,.sa-evaluation th { padding:12px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+.sa-evaluation th { font-weight:650; }
+.sa-evaluation small { display:block; color:var(--muted); font-size:12px; margin-top:8px; line-height:1.6; }
+.sa-score-header strong { font-size:32px; color:var(--ink); }
+.sa-evaluation details { font-size:14px; padding:16px 0; }
+.sa-evaluation ul { padding-left:24px; list-style:disc; line-height:1.8; }
+.sa-evaluation progress { accent-color:var(--accent); width:65%; }
+@media(max-width:720px) { .sa-score-header strong { font-size:26px; } .sa-evaluation h2 { font-size:22px; } }

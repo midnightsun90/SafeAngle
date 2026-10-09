@@ -9,7 +9,8 @@ import { formatVideoTime } from "@/lib/video";
 import { useVideoSource } from "@/components/useVideoSource";
 
 export default function ScenePreview({ number }: { number: VideoNumber }) {
-  const { files, storedVideos, selectedTimes, demoMode } = useVideoFiles();
+  const { files, storedVideos, selectedTimes, demoMode, rebaResults } = useVideoFiles();
+  const evidence=rebaResults[number]?.evidence;
   const file = files[number];
   const storedVideo = storedVideos[number];
   const { src, error } = useVideoSource(number);
@@ -25,6 +26,8 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
     <div className="scene-preview">
       {demoMode ? (
         <Image src={demoImages[number]} alt={`영상 ${number} 작업 예시 사진`} fill unoptimized sizes="370px" />
+      ) : evidence ? (
+        <img src={evidence.imageDataUrl} alt={`영상 ${number}의 평가에 사용한 대표 장면`} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
       ) : file || storedVideo ? (
         <video
           ref={videoRef}

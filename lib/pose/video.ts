@@ -5,9 +5,15 @@ import { resolvePolicy } from "../config.ts";
 import { waitForLoad, waitForTask } from "./loading.ts";
 
 export interface VideoOptions extends AnalysisOptions {
+  assetBasePath?: string;
   signal?: AbortSignal;
   onProgress?: (processed: number, total: number) => void;
   onState?: (state: "decoding" | "loading-model" | "analyzing" | "measuring") => void;
+}
+export function assetPaths(basePath = "") {
+  if(typeof basePath!=="string" || (basePath!=="" && !/^\/[A-Za-z0-9/_-]+$/.test(basePath)) || basePath.includes("//"))throw new TypeError("모델 자산 경로는 로컬 서비스의 경로 접두사여야 합니다.");
+  const base=basePath.replace(/\/$/,"");
+  return {modelPath:`${base}/models/pose_landmarker_full.task`,wasmPath:`${base}/wasm`};
 }
 export interface VideoAnalysis extends Analysis {
   runtime: { modelPath: string; modelVersion: string; packageVersion: string; startedAt: string;
@@ -41,8 +47,7 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
   if (!(file instanceof Blob) || file.size === 0) throw new TypeError("비어 있지 않은 영상 파일이 필요합니다.");
   if (file.size > 250 * 1024 * 1024) throw new RangeError("영상 파일은 250MB 이내로 줄여 주십시오.");
   const policy = resolvePolicy(options.policy);
-  const modelPath = "/models/pose_landmarker_full.task";
-  const wasmPath = "/wasm";
+  const {modelPath,wasmPath} = assetPaths(options.assetBasePath);
   const start = performance.now();
   const startedAt = new Date().toISOString();
   const video = document.createElement("video");
