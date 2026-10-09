@@ -1,11 +1,18 @@
-import type { Analysis, Measurement, PartName, Side } from "../types.ts";
+import type { Analysis, PartName, Side, TrackedFrame } from "../types.ts";
 import { integerInRange, numberInRange, requireRecord } from "../validation.ts";
 import { lookupA, lookupB, lookupC } from "./tables.ts";
 import type { ActionLevel, AnswerName, AnswerValues, Confirmation, PartEvidence, PendingInput, RebaAnswers, RebaFields, RebaResult, RebaScene, SceneKey } from "./types.ts";
 export type * from "./types.ts";
 
 const PARTS: PartName[] = ["neck","trunk","knee","upperArm","lowerArm","wrist"];
-const GLOBAL_FAILURES = ["no_person","multiple_people","invalid_landmarks","not_side_view","too_far","unknown_direction","tracking_uncertain"];
+const GLOBAL_FAILURES = ["no_person","multiple_people","not_side_view","too_far","unknown_direction","tracking_uncertain"];
+export function sceneBlockReasons(frame: TrackedFrame): string[] {
+  const reasons=frame.reasons.filter(r=>GLOBAL_FAILURES.includes(r));
+  if(!Array.isArray(frame.landmarks)||frame.landmarks.length!==33||!frame.landmarks.some(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.visibility)))reasons.push("invalid_landmarks");
+  if(frame.personCount!==1)reasons.push(frame.personCount>1?"multiple_people":"no_person");
+  if(frame.requiresReview)reasons.push("tracking_uncertain");
+  return [...new Set(reasons)];
+}
 const BOOLEANS: AnswerName[] = ["trunkUpright","neckTwist","neckSideBend","trunkTwist","trunkSideBend","unstable","armAbducted","shoulderRaised","armSupported","wristDeviated","wristTwisted","shock","repetitionIsWalking","rapidChange"];
 const LIMITS = { neckBase:[1,2],trunkBase:[1,4],kneeExtra:[0,2],upperArmBase:[1,4],lowerArmBase:[1,2],wristBase:[1,2],loadKg:[0,100000],staticMinutes:[0,1440],repeatsPerMinute:[0,100000] } as const;
 const ENUMS = { legs:["bilateral","walking","sitting","unilateral"],coupling:["good","fair","poor","unacceptable"] } as const;
@@ -86,8 +93,8 @@ export function scoreScene(scene: RebaScene, answers: RebaAnswers): RebaResult {
   for(const part of PARTS)parts[part]={measurement:structuredClone(raw[part]),source:null,base:null,adjustment:null,score:null,evidenceIds:[],notes:[]};
   const inputs=Object.fromEntries(ANSWER_NAMES.map(key=>[key,{...fields[key]}])) as RebaFields;
   const result:RebaResult={scene:{...scene.key},status:"pending",inputs,parts,pending,tableA:null,load:null,scoreA:null,tableB:null,coupling:null,scoreB:null,tableC:null,activity:null,activityBreakdown:null,final:null,action:null,legalApplicability:"unknown",surveyComplete:false};
-  const failures=[...scene.frame.reasons,...PARTS.flatMap(part=>raw[part].reasons)].filter(r=>GLOBAL_FAILURES.includes(r));
-  if(scene.frame.requiresReview || scene.frame.personCount!==1 || failures.length){
+  const failures=sceneBlockReasons(scene.frame);
+  if(failures.length){
     result.status="unavailable";pending.push({field:"scene",state:"unavailable",reason:`재촬영·대상 확인 필요: ${[...new Set(failures)].join(", ") || "대상 추적 불확실"}`});return result;
   }
   function read<K extends AnswerName>(name: K): AnswerValues[K] | null {

@@ -89,6 +89,14 @@ test("bad global scene and persistent subject review cannot be overridden with h
   for(const reason of ["no_person","multiple_people","not_side_view","too_far","tracking_uncertain"] as const){const {scene,answers}=fixture();scene.frame.reasons=[reason];assert.equal(scoreScene(scene,answers).status,"unavailable");assert.equal(scoreScene(scene,answers).final,null);}
   const {scene,answers}=fixture();scene.frame.requiresReview=true;assert.equal(scoreScene(scene,answers).final,null);
 });
+test("individual invalid coordinates and far-side errors do not masquerade as global failures",()=>{
+  const {scene,answers}=fixture();scene.frame.reasons=["invalid_landmarks"];
+  scene.frame.measurements.right.neck={...scene.frame.measurements.right.neck,value:null,status:"unavailable",reasons:["invalid_landmarks"]};
+  assert.equal(scoreScene(scene,answers).status,"complete");
+  scene.frame.measurements.left.neck={...scene.frame.measurements.left.neck,value:null,status:"unavailable",reasons:["invalid_landmarks"]};
+  const r=scoreScene(scene,answers);assert.equal(r.status,"complete");assert.equal(r.parts.neck.measurement.value,null);assert.equal(r.parts.neck.source,"human");
+  scene.frame.landmarks=[];assert.equal(scoreScene(scene,answers).status,"unavailable");
+});
 test("video, frame, timestamp, side mismatch rejected; input preserved; changes recalculate",()=>{
   const {analysis,scene,answers}=fixture(),before=structuredClone({scene,answers});assert.deepEqual(scoreScene(scene,answers),scoreScene(scene,answers));assert.deepEqual({scene,answers},before);
   const detached=scoreScene(scene,answers);detached.parts.neck.measurement.value=99;detached.inputs.shock=confirmed(true);assert.deepEqual({scene,answers},before);

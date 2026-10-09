@@ -3,9 +3,9 @@ const {chromium}=require('playwright');
 const {spawn}=require('node:child_process');
 const {mkdir,writeFile}=require('node:fs/promises');
 const path=require('node:path');
-const root=path.resolve(__dirname,'..'),frontend=path.join(root,'frontend'),url='http://127.0.0.1:4180';
+const root=path.resolve(__dirname,'..'),basePath=process.env.VERIFY_BASE_PATH??'',url='http://127.0.0.1:4180'+basePath;
 const dir=path.join(root,'.local/reba-verification'),records=[],errors=[],external=[];
-const server=spawn(process.execPath,[path.join(frontend,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','4180'],{cwd:frontend,stdio:['ignore','pipe','pipe']});
+const server=spawn(process.execPath,['scripts/serve-frontend.mjs'],{cwd:root,env:{...process.env,BASE_PATH:basePath,PORT:'4180'},stdio:['ignore','pipe','pipe']});
 let serverOutput='',browser,page;
 server.stdout.on('data',v=>serverOutput+=v);server.stderr.on('data',v=>serverOutput+=v);
 async function ready(){
@@ -13,7 +13,7 @@ async function ready(){
     try{const r=await fetch(url);if(r.ok)return;}catch{}
     if(server.exitCode!==null)throw new Error(serverOutput);
     await new Promise(r=>setTimeout(r,100));
-  }throw new Error('Next production server did not start: '+serverOutput);
+  }throw new Error('Static frontend server did not start: '+serverOutput);
 }
 async function choose(name){await page.locator('#evaluation-files').setInputFiles(path.join(root,'.local/fixtures',name));assert.equal(await page.locator('#reba-result').count(),0,'Old score survived file change');}
 async function finish(){await page.waitForFunction(()=>/분석 완료|분석 실패|분석 취소/.test(document.querySelector('#analysis-phase')?.textContent??''),null,{timeout:120000});}
@@ -34,8 +34,15 @@ async function final(){return Number(await page.locator('#reba-final').getAttrib
   await mkdir(dir,{recursive:true});await ready();browser=await chromium.launch({channel:'chrome',headless:true});page=await browser.newPage({viewport:{width:1280,height:1000}});
   page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith(url)&&!r.url().startsWith('blob:')&&!r.url().startsWith('data:'))external.push(r.url());});
   await page.addInitScript(()=>{const create=URL.createObjectURL.bind(URL),revoke=URL.revokeObjectURL.bind(URL),live=new Set();URL.createObjectURL=b=>{const v=create(b);live.add(v);return v;};URL.revokeObjectURL=v=>{live.delete(v);return revoke(v);};window.liveObjectUrls=live;});
-  await page.goto(url);await page.locator('#company').fill('브라우저 검증 회사');await page.locator('#worksite').fill('검증 작업장');await page.locator('#task').fill('연결 검증, 기준 라벨 아님');await page.getByRole('button',{name:'정보 저장',exact:true}).click();await page.getByRole('button',{name:'영상 평가로 이동',exact:true}).click();
+  await page.goto(url+'/');await page.locator('#company').fill('브라우저 검증 회사');await page.locator('#worksite').fill('검증 작업장');await page.locator('#task').fill('연결 검증, 기준 라벨 아님');await page.getByRole('button',{name:/다음: 영상 올리기/}).click();
+  await page.getByLabel('영상 1 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/squat.webm'));
+  await page.getByRole('button',{name:/다음: 영상 2/}).click();await page.getByLabel('영상 2 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/short.webm'));
+  await page.getByRole('button',{name:/다음: 영상 3/}).click();await page.getByLabel('영상 3 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/empty.webm'));
+  await page.getByRole('button',{name:/다음: 영상 확인/}).click();await page.locator('#evaluation-files').waitFor();assert.equal(await page.getByRole('tab').count(),3);assert.match(await page.getByRole('tab').first().innerText(),/squat.webm/);
+  records.push({case:'team company and three upload pages retain selected files at review',passed:true});
   const model=await page.request.get(url+'/models/pose_landmarker_full.task');assert.equal(model.status(),200);assert.equal((await model.body()).length,9398198);
+  assert.equal((await page.request.get(url+'/%2e%2e%2fpackage.json')).status(),403,'Preview must not serve files outside out');
+  assert.equal((await page.request.get(url+'/missing-file.task')).status(),404);
   await analyze('squat.webm');await selectFrame(20);assert.match(await page.locator('#evaluation-time').innerText(),/2\.00초/);
   const geometry=await page.evaluate(()=>{const v=document.querySelector('#evaluation-video'),c=document.querySelector('#evaluation-overlay'),vr=v.getBoundingClientRect(),cr=c.getBoundingClientRect();return {time:v.currentTime,vw:vr.width,vh:vr.height,cw:cr.width,ch:cr.height,width:c.width,height:c.height};});
   assert.equal(geometry.time,2);assert.equal(geometry.vw,geometry.cw);assert.equal(geometry.vh,geometry.ch);assert.deepEqual([geometry.width,geometry.height],[480,640]);
@@ -68,6 +75,10 @@ async function final(){return Number(await page.locator('#reba-final').getAttrib
   await page.getByRole('tab',{name:/영상 2/}).click();assert.equal(await final(),secondVideoScore);
   assert.equal(await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(n=>n.id);return new Set(ids).size===ids.length;}),true);
   records.push({case:'three independent videos, retained answers, no shared score or duplicate DOM ids',firstVideoScore,secondVideoScore});
+  await page.goto(url+'/');await page.locator('#company').fill('검증');await page.locator('#worksite').fill('검증');await page.locator('#task').fill('실제 작업 후보 생략 검증');await page.getByRole('button',{name:/다음: 영상 올리기/}).click();
+  await page.getByRole('button',{name:/해당|건너뛰기/}).click();await page.getByLabel('영상 2 선택',{exact:true}).setInputFiles(path.join(root,'.local/fixtures/short.webm'));
+  await page.getByRole('button',{name:/현재 선택한 영상으로 평가/}).click();await page.locator('#evaluation-files').waitFor();assert.equal(await page.getByRole('tab').count(),1);
+  records.push({case:'irrelevant posture skipped, one actual file can proceed from upload 2',passed:true});
   await choose('short.webm');await page.getByRole('button',{name:'관절 분석 시작',exact:true}).click();await finish();
   const resources=await page.evaluate(()=>({videos:document.querySelectorAll('video').length,urls:window.liveObjectUrls.size}));assert.deepEqual(resources,{videos:1,urls:1});
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(dir,'mobile.png'),fullPage:true});

@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "predev": "node ../scripts/prepare-pose.mjs",
-    "dev": "next dev --webpack --hostname 0.0.0.0 --port 3000",
+    "dev": "next dev --hostname 0.0.0.0 --port 3000",
     "prebuild": "node ../scripts/prepare-pose.mjs",
-    "build": "next build --webpack",
-    "start": "next start",
+    "build": "next build",
+    "start": "node ../scripts/serve-frontend.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,11 +16,9 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.3.3",
     "@types/node": "20.19.25",
     "@types/react": "19.2.1",
     "@types/react-dom": "19.2.1",
-    "tailwindcss": "4.1.17",
     "typescript": "5.9.3"
   }
 }

@@ -1,0 +1,65 @@
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-frontend.yml"
+      - "frontend/**"
+      - "lib/**"
+      - "scripts/prepare-pose.mjs"
+      - "package*.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - uses: actions/configure-pages@v5
+      - name: Install shared engine dependencies
+        run: npm ci
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Check types
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Build static site
+        working-directory: frontend
+        env:
+          GITHUB_PAGES: "true"
+        run: npm run build
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4
