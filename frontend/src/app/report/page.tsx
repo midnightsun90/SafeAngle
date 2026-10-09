@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import EvaluationShell from "@/components/EvaluationShell";
+import ScenePreview from "@/components/ScenePreview";
 import { useVideoFiles } from "@/components/VideoFilesProvider";
 import { formatVideoTime } from "@/lib/video";
 import { sampleResults, sampleRows, videoTitles } from "@/lib/resultData";
@@ -91,7 +92,7 @@ export default function ReportPage() {
 
       {real?.evidence&&<section className="report-table-section" aria-label="GPT 관절 근거"><h2>대표 장면과 관절 확인 기록</h2>
         <p>{real.evidence.provenance.model} · {real.evidence.provenance.promptVersion} · {real.scene.timeSec.toFixed(2)}초 · {real.scene.side==="left"?"왼쪽":"오른쪽"}. 좌표는 이미지의 왼쪽 위를 기준으로 한 비율이며, 각도는 확인 후 코드로 계산했습니다.</p>
-        <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/>
+        {real.evidence.imageDataUrl ? <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/> : <ScenePreview number={resultVideo} />}
         <div className="report-table-scroll"><table className="report-item-table"><thead><tr><th>관절</th><th>GPT 원 제안 (x, y)</th><th>사람 확인·수정 (x, y)</th></tr></thead><tbody>{Object.entries(real.evidence.reviewedPoints).map(([name,p])=>{const before=real.evidence!.originalPoints[name as keyof typeof real.evidence.originalPoints];const format=(point:typeof p)=>point?`${point.x.toFixed(4)}, ${point.y.toFixed(4)}`:"관측 불가";return <tr key={name}><th>{name}</th><td>{format(before)}</td><td>{format(p)}</td></tr>;})}</tbody></table></div>
       </section>}
 
