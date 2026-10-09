@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  font-family: "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+  font-family: var(--font-pretendard), sans-serif;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
@@ -11,4 +11,4 @@ html, body { min-height: 100%; }
 
 body { margin: 0; }
 
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
