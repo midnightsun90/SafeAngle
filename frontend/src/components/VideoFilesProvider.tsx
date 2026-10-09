@@ -10,6 +10,17 @@ type VideoFiles = Record<VideoNumber, File | null>;
 const emptyFiles = (): VideoFiles => ({ 1: null, 2: null, 3: null });
 const emptyAnswers = (): Record<VideoNumber, Record<string, string>> => ({ 1: {}, 2: {}, 3: {} });
 const emptyTimes = (): Record<VideoNumber, number | null> => ({ 1: null, 2: null, 3: null });
+const demoStorageKey = "safeangle-preview-demo";
+function readDemoSession(): boolean {
+  try { return sessionStorage.getItem(demoStorageKey) === "1"; }
+  catch { return false; }
+}
+function writeDemoSession(enabled: boolean): void {
+  try {
+    if (enabled) sessionStorage.setItem(demoStorageKey, "1");
+    else sessionStorage.removeItem(demoStorageKey);
+  } catch { /* Preview still works until the tab reloads. */ }
+}
 
 type ContextValue = {
   dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
@@ -46,8 +57,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function restore() {
       try {
+        const previewDemo = process.env.NODE_ENV === "development" && readDemoSession();
+        if (previewDemo) setDemoMode(true);
         if (!supabase) throw new Error("DB 설정이 없습니다.");
-        const saved = readDashboardState(localStorage.getItem(dashboardStorageKey)) ?? createDashboardState();
+        const savedState = readDashboardState(localStorage.getItem(dashboardStorageKey)) ?? createDashboardState();
+        const saved = previewDemo ? { ...savedState, activeId: null } : savedState;
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
         let user = sessionData.session?.user ?? null;
@@ -136,6 +150,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
     setDashboard((current) => addEvaluation(current, name, id));
     setDemoMode(false);
+    writeDemoSession(false);
     setResultVideo(1);
   }
 
@@ -151,6 +166,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setDemoTimes(emptyTimes());
     setDemoConfirmed({ 1: false, 2: false, 3: false });
     setDemoMode(false);
+    writeDemoSession(false);
     setResultVideo(1);
     setConnectionError("");
   }
@@ -160,6 +176,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (!person) return "/";
     setDashboard((current) => ({ ...current, activeId: id }));
     setDemoMode(false);
+    writeDemoSession(false);
     setResultVideo(([1, 2, 3] as const).find((number) => !person.skipped[number]) ?? 1);
     const retained = filesByPerson[id] ?? emptyFiles();
     if ([1, 2, 3].some((number) => person.fileKeys[number as VideoNumber] && !retained[number as VideoNumber])) return "/upload/1";
@@ -241,6 +258,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setDemoConfirmed({ 1: false, 2: false, 3: false });
     setDashboard((current) => ({ ...current, activeId: null }));
     setDemoAnswers(emptyAnswers()); setDemoTimes(emptyTimes()); setDemoMode(true); setResultVideo(1);
+    writeDemoSession(true);
   }
 
   function confirmScene(number: VideoNumber) {

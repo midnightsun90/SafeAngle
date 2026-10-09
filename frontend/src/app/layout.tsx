@@ -4,6 +4,7 @@ import "./safeangle.css";
 import "./dashboard.css";
 import { VideoFilesProvider } from "@/components/VideoFilesProvider";
 import DashboardShell from "@/components/DashboardShell";
+import PreviewStart from "@/components/PreviewStart";
 
 export const metadata: Metadata = {
   title: "SafeAngle | 작업 자세 평가",
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko">
-      <body><VideoFilesProvider><DashboardShell>{children}</DashboardShell></VideoFilesProvider></body>
+      <body><VideoFilesProvider><PreviewStart /><DashboardShell>{children}</DashboardShell></VideoFilesProvider></body>
     </html>
   );
 }
