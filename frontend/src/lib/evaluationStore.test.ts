@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addEvaluation, createDashboardState, updateEvaluation, readDashboardState, fileIdentity } from "./evaluationStore.ts";
+import { addEvaluation, createDashboardState, updateEvaluation, readDashboardState, fileIdentity, mergeStoredPeople } from "./evaluationStore.ts";
 
 test("새 대상자를 추가하면 기존 대상자의 답변을 보존한다", () => {
   const first = addEvaluation(createDashboardState("민서"), "김하늘", "first");
@@ -49,4 +49,17 @@ test("건너뛴 작업은 다른 평가 대상자에게 적용되지 않는다",
 
   assert.equal(second.evaluations.find((item) => item.id === "first")?.skipped[2], true);
   assert.equal(second.evaluations.find((item) => item.id === "second")?.skipped[2], false);
+});
+
+test("DB 대상자 목록을 복원하면서 이 브라우저의 기존 답변을 보존한다", () => {
+  const local = updateEvaluation(addEvaluation(createDashboardState("관리자"), "이전 이름", "first"), "first", (item) => ({
+    ...item, answers: { ...item.answers, 1: { load: "5" } },
+  }));
+  const merged = mergeStoredPeople(local, "DB 관리자", [
+    { id: "second", name: "새 대상자", created_at: "2026-10-09T02:00:00Z" },
+    { id: "first", name: "DB 이름", created_at: "2026-10-09T01:00:00Z" },
+  ]);
+  assert.equal(merged.evaluatorName, "DB 관리자");
+  assert.deepEqual(merged.evaluations.map((item) => item.name), ["새 대상자", "DB 이름"]);
+  assert.equal(merged.evaluations[1].answers[1].load, "5");
 });

@@ -44,6 +44,20 @@ export function addEvaluation(state: DashboardState, name: string, id: string): 
   return { ...state, activeId: id, evaluations: [evaluation, ...state.evaluations] };
 }
 
+export type StoredPerson = { id: string; name: string; created_at: string };
+
+export function mergeStoredPeople(state: DashboardState, evaluatorName: string, people: StoredPerson[]): DashboardState {
+  const local = new Map(state.evaluations.map((item) => [item.id, item]));
+  const evaluations = people.map((person) => local.get(person.id)
+    ? { ...local.get(person.id)!, name: person.name, createdAt: person.created_at }
+    : addEvaluation(createDashboardState(), person.name, person.id).evaluations[0]);
+  return {
+    evaluatorName,
+    activeId: state.activeId && evaluations.some((item) => item.id === state.activeId) ? state.activeId : null,
+    evaluations,
+  };
+}
+
 export function updateEvaluation(
   state: DashboardState,
   id: string,
