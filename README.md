@@ -20,7 +20,9 @@
 
 ## 현재 상태
 
-2026-10-09, 비어 있는 GitHub 저장소에서 새로 시작했습니다. 현재는 README, Codex 작업 지침, 제출·운영 가이드가 있습니다. 영상 분석, 채점 엔진, AI 연결, 배포는 아직 구현되지 않았습니다. 아래 내용은 구현할 범위와 완료 기준입니다.
+2026-10-09, 비어 있는 GitHub 저장소에서 새로 시작했습니다. 현재 엔진 작업은 **MediaPipe Pose Landmarker Full을 사용하는 관절 추적 MVP**입니다. 브라우저 영상 분석 함수, 좌표·신뢰도·품질 처리와 2차원 각도 모듈을 작성했습니다. 타입 검사와 모델 자산 준비를 확인했으며 실제 영상 추론, 프론트엔드 연결과 배포는 아직 확인하지 않았습니다. 채점 규칙 상세는 임서현·한다현이 정리합니다.
+
+**팀 연결 안내: [관절 추적 엔진 MVP](docs/ENGINE.md)**. 호출은 `analyzeVideo(file, options)`, 준비는 `npm ci`와 `npm run prepare:pose`입니다. 모델 비교, 별도 좌표 필터, 3차원 분석과 AI 초안은 이번 엔진 변경에서 제외합니다. 아래의 전체 제품 흐름은 이후 연결할 목표입니다.
 
 ## 해커톤 제출과 운영 (2026-10-09 원문·제출 화면 확인)
 
@@ -136,15 +138,15 @@ AI 전송 동의는 영상 선택과 별도로 받습니다. 동의가 없거나
 
 ## 기술 방향과 협업 경계
 
-기획 방향은 **Next.js + TypeScript**, **MediaPipe Pose Landmarker**, **OpenAI Responses API**, **Vercel**입니다. 아직 패키지를 설치하지 않았습니다. 버전은 구현할 때 공식 문서와 배포 빌드를 확인해 고정합니다. 그래프는 SVG, PDF는 브라우저 인쇄를 우선합니다.
+기획 방향은 **Next.js + TypeScript**, **MediaPipe Pose Landmarker**, **OpenAI Responses API**, **Vercel**입니다. 현재 엔진에는 TypeScript와 `@mediapipe/tasks-vision@0.10.34`를 설치했습니다. Full 모델 v1을 사용합니다. Next.js·OpenAI API·배포 연결은 별도 작업입니다. 그래프는 SVG, PDF는 브라우저 인쇄를 우선합니다.
 
-모듈은 아래처럼 나눕니다. 이는 예정 구조이며 아직 폴더와 구현이 만들어진 상태는 아닙니다.
+모듈은 아래처럼 나눕니다. 관절 추적과 각도 모듈은 작성했으며, 채점과 초안 모듈은 아직 구현하지 않았습니다.
 
 | 영역 | 입력 → 출력 | 구현 담당·실행 위치 |
 | --- | --- | --- |
 | `lib/pose` | 영상 → 시각별 관절 좌표 | 고민서, 브라우저에서 실행하는 엔진 모듈 |
 | `lib/angles` | 관절 좌표·영상 크기 → 각도·품질 | 고민서, 순수 계산 |
-| `lib/reba` | 각도·사람 확인값 → 점수·근거 | 고민서, 순수 계산, AI와 분리 |
+| 채점 연결(예정) | 각도·사람 확인값 → 점수·근거 | 임서현·한다현이 상세 규칙 정리, 엔진과 분리해 연결 |
 | `app/api/draft` | 대표 장면·수치·작업 정보 → 초안 | 고민서, 서버 키·입력 검증·오류 처리 |
 | `components`·페이지 | 엔진 결과 → 화면·확인 입력·출력 | 임서현·한다현, 웹 프론트엔드 |
 | `docs/criteria.md` | 공식 원문 → 적용 조건·입력 항목·문구 | 임서현·한다현, 기준표 문서 |
@@ -153,7 +155,7 @@ AI 전송 동의는 영상 선택과 별도로 받습니다. 동의가 없거나
 
 ### 프론트엔드·엔진 연결 규격
 
-먼저 아래 데이터의 이름, 단위, 누락값 표현을 공유 TypeScript 타입으로 고정합니다. 표는 계약 초안이며 실제 타입·함수·API는 아직 없습니다.
+먼저 아래 데이터의 이름, 단위, 누락값 표현을 공유 TypeScript 타입으로 고정합니다. 관절 추적의 실제 타입과 함수는 `lib/types.ts`와 [엔진 연결 안내](docs/ENGINE.md)에 있습니다. 아래 표의 채점·초안 부분은 계약 초안입니다.
 
 | 데이터 | 반드시 전달할 내용 |
 | --- | --- |
@@ -221,4 +223,4 @@ AI 전송 동의는 영상 선택과 별도로 받습니다. 동의가 없거나
 - [OpenAI Responses API](https://developers.openai.com/api/reference/responses/overview), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [해커톤 안내](https://luma.com/f7h7onav), [상세 규정](https://codex-community-korea.skysplit.chatgpt.site/hackathon/seoul-2026-10)
 
-실행 명령, 환경변수 예시, 배포 주소와 검증 결과는 구현이 준비되는 대로 이 문서에 추가합니다.
+엔진 실행 준비와 검증 상태는 [관절 추적 엔진 MVP](docs/ENGINE.md)에 있습니다. 전체 웹 앱의 실행 명령과 배포 주소는 프론트엔드 연결 후 추가합니다.
