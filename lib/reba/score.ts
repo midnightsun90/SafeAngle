@@ -1,7 +1,7 @@
-import type { Analysis, PartName, Side, TrackedFrame } from "../types.ts";
+import type { Analysis, Measurement, PartName, Side, TrackedFrame } from "../types.ts";
 import { integerInRange, numberInRange, requireRecord } from "../validation.ts";
 import { lookupA, lookupB, lookupC } from "./tables.ts";
-import type { ActionLevel, AnswerName, AnswerValues, Confirmation, PartEvidence, PendingInput, RebaAnswers, RebaFields, RebaResult, RebaScene, SceneKey } from "./types.ts";
+import type { ActionLevel, AnswerName, AnswerValues, Confirmation, PartEvidence, PendingInput, PostureScene, RebaAnswers, RebaFields, RebaResult, RebaScene, SceneKey } from "./types.ts";
 export type * from "./types.ts";
 
 const PARTS: PartName[] = ["neck","trunk","knee","upperArm","lowerArm","wrist"];
@@ -37,17 +37,25 @@ export function sceneFromAnalysis(analysis: Analysis, videoId: string, frameInde
 }
 function validateInput(scene: RebaScene, answers: RebaAnswers) {
   requireRecord(scene,"scene");validateKey(scene.key);requireRecord(scene.frame,"frame");
-  requireRecord(answers,"answers");validateKey(answers.scene);requireRecord(answers.fields,"fields");
-  if(scene.frame.timeSec!==scene.key.timeSec || ["videoId","frameIndex","timeSec","side"].some(k=>scene.key[k as keyof SceneKey]!==answers.scene[k as keyof SceneKey])) throw new Error("다른 영상·장면·쪽의 입력을 섞을 수 없습니다.");
+  if(scene.frame.timeSec!==scene.key.timeSec) throw new Error("다른 영상·장면·쪽의 입력을 섞을 수 없습니다.");
   if(typeof scene.frame.requiresReview!=="boolean" || !Array.isArray(scene.frame.reasons))throw new TypeError("장면 품질 상태가 필요합니다.");
   integerInRange(scene.frame.personCount,0,100,"personCount");
   requireRecord(scene.frame.measurements,"measurements");requireRecord(scene.frame.measurements[scene.key.side],"side measurements");
+  validateMeasurements(scene.frame.measurements[scene.key.side]);
+  validateAnswers(scene.key,answers);
+}
+function validateMeasurements(raw: unknown) {
+  requireRecord(raw,"measurements");
   for(const part of PARTS){
-    const m=scene.frame.measurements[scene.key.side][part];requireRecord(m,part);
+    const m=raw[part];requireRecord(m,part);
     if(typeof m.approximate!=="boolean" || !Array.isArray(m.reasons))throw new TypeError(`${part}: 측정 근거가 필요합니다.`);
     if(m.status==="measured")numberInRange(m.value,part==="upperArm"?-90:part==="trunk"||part==="neck"?-180:0,part==="upperArm"?270:180,part);
     else if(m.status!=="unavailable" || m.value!==null)throw new TypeError(`${part}: 측정 상태와 값이 다릅니다.`);
   }
+}
+function validateAnswers(scene: SceneKey, answers: RebaAnswers) {
+  requireRecord(answers,"answers");validateKey(answers.scene);requireRecord(answers.fields,"fields");
+  if(["videoId","frameIndex","timeSec","side"].some(k=>scene[k as keyof SceneKey]!==answers.scene[k as keyof SceneKey])) throw new Error("다른 영상·장면·쪽의 입력을 섞을 수 없습니다.");
   for(const key of ANSWER_NAMES){
     const f=answers.fields[key];requireRecord(f,key);
     if(f.source!=="human" || typeof f.observable!=="boolean")throw new TypeError(`${key}: 사람 확인 출처가 필요합니다.`);
@@ -64,6 +72,17 @@ function validateInput(scene: RebaScene, answers: RebaAnswers) {
       const options: readonly string[]=ENUMS[key as keyof typeof ENUMS];
       if(typeof f.value!=="string"||!options.includes(f.value))throw new TypeError(`${key}: 선택지가 올바르지 않습니다.`);
     }
+  }
+}
+function validatePostureInput(scene: PostureScene, answers: RebaAnswers) {
+  requireRecord(scene,"scene");validateKey(scene.key);validateAnswers(scene.key,answers);
+  requireRecord(scene.availability,"availability");
+  if(!["ready","pending","unavailable"].includes(scene.availability.state)||!["pose","human"].includes(scene.availability.source)||!Array.isArray(scene.availability.reasons)||scene.availability.reasons.some(r=>typeof r!=="string")||scene.availability.state==="ready"&&scene.availability.reasons.length)throw new TypeError("장면 확인 상태가 올바르지 않습니다.");
+  if(scene.measurementSource!=="video"&&scene.measurementSource!=="vlm")throw new TypeError("측정 출처가 필요합니다.");
+  if(scene.measurements!==null)validateMeasurements(scene.measurements);
+  if(scene.measurementSource==="vlm"&&scene.availability.state==="ready"){
+    if(scene.availability.source!=="human"||scene.evidence?.confirmedBy!=="human")throw new TypeError("GPT 관절 좌표의 사람 확인이 필요합니다.");
+    if(["videoId","frameIndex","timeSec","side"].some(k=>scene.key[k as keyof SceneKey]!==scene.evidence!.capture.scene[k as keyof SceneKey]))throw new Error("다른 장면의 관절 확인을 사용할 수 없습니다.");
   }
 }
 
@@ -87,15 +106,23 @@ export function actionLevel(final: number): ActionLevel {
 }
 export function scoreScene(scene: RebaScene, answers: RebaAnswers): RebaResult {
   validateInput(scene,answers);
+  const failures=sceneBlockReasons(scene.frame);
+  return scorePostureScene({key:scene.key,measurements:scene.frame.measurements[scene.key.side],measurementSource:"video",
+    availability:failures.length?{state:"unavailable",source:"pose",reasons:failures}:{state:"ready",source:"pose",reasons:[]}},answers);
+}
+export function scorePostureScene(scene: PostureScene, answers: RebaAnswers): RebaResult {
+  validatePostureInput(scene,answers);
   const fields=answers.fields, pending:PendingInput[]=[];
-  const raw=scene.frame.measurements[scene.key.side];
+  const missing=():Measurement=>({value:null,status:"unavailable",reasons:[],joints:[],minVisibility:null,approximate:true});
+  const raw=scene.measurements??{neck:missing(),trunk:missing(),knee:missing(),upperArm:missing(),lowerArm:missing(),wrist:missing()};
   const parts={} as Record<PartName,PartEvidence>;
   for(const part of PARTS)parts[part]={measurement:structuredClone(raw[part]),source:null,base:null,adjustment:null,score:null,evidenceIds:[],notes:[]};
   const inputs=Object.fromEntries(ANSWER_NAMES.map(key=>[key,{...fields[key]}])) as RebaFields;
   const result:RebaResult={scene:{...scene.key},status:"pending",inputs,parts,pending,tableA:null,load:null,scoreA:null,tableB:null,coupling:null,scoreB:null,tableC:null,activity:null,activityBreakdown:null,final:null,action:null,legalApplicability:"unknown",surveyComplete:false};
-  const failures=sceneBlockReasons(scene.frame);
-  if(failures.length){
-    result.status="unavailable";pending.push({field:"scene",state:"unavailable",reason:`재촬영·대상 확인 필요: ${[...new Set(failures)].join(", ") || "대상 추적 불확실"}`});return result;
+  if(scene.evidence)result.evidence=structuredClone(scene.evidence);
+  if(scene.availability.state!=="ready"){
+    const state=scene.availability.state;result.status=state==="pending"?"pending":"unavailable";
+    pending.push({field:"scene",state:state==="pending"?"unknown":"unavailable",reason:`장면·관절 확인 필요: ${scene.availability.reasons.join(", ")}`});return result;
   }
   function read<K extends AnswerName>(name: K): AnswerValues[K] | null {
     const f=fields[name];if(f.state==="confirmed")return f.value;
@@ -106,10 +133,11 @@ export function scoreScene(scene: RebaScene, answers: RebaAnswers): RebaResult {
     const value=read(name);if(value!==null && !fields[name].observable){pending.push({field:name,state:"unavailable",reason:"장면에서 해당 부위를 볼 수 있다고 확인해야 합니다."});return null;}return value;
   }
   const pair=(a:AnswerName,b:AnswerName)=>{const x=read(a),y=read(b);return x===null||y===null?null:x||y?1:0;};
-  function finish(part:PartName,base:number|null,adjustment:number|null,source:"video"|"human",ids:string[]){
+  function finish(part:PartName,base:number|null,adjustment:number|null,source:"video"|"vlm"|"human",ids:string[]){
     const p=parts[part];p.base=base;p.adjustment=adjustment;p.source=base===null?null:source;p.evidenceIds=ids;
     if(base!==null&&adjustment!==null)p.score=part==="upperArm"?Math.max(1,base+adjustment):base+adjustment;
     if(raw[part].approximate)p.notes.push("2차원 근사값, 사람 구간 확인을 사용합니다.");
+    if(scene.measurementSource==="vlm")p.notes.push("GPT 제안 좌표를 사람이 확인·수정한 뒤 코드로 계산한 2차원 각도입니다.");
     if(raw[part].value===null)p.notes.push("원본 측정 불가, 보이는 장면의 사람 구간 확인만 허용합니다.");
     if(part==="upperArm"&&base!==null&&adjustment!==null&&base+adjustment<1)p.notes.push("앱 정책: 표 B 최소 입력 1점으로 유지합니다.");
   }
@@ -118,13 +146,13 @@ export function scoreScene(scene: RebaScene, answers: RebaAnswers): RebaResult {
   const tb=upright===null?null:raw.trunk.value===null?manual("trunkBase"):upright?1:trunkBase(raw.trunk.value);
   // A contradictory manual upright/band answer is an input error, not a silently corrected score.
   if(raw.trunk.value===null&&tb!==null&&upright!==null&&upright!==(tb===1))throw new Error("몸통 중립 확인과 보충 구간이 다릅니다.");
-  finish("trunk",tb,pair("trunkTwist","trunkSideBend"),raw.trunk.value===null||upright?"human":"video",["R05","R06","R07"]);
+  finish("trunk",tb,pair("trunkTwist","trunkSideBend"),raw.trunk.value===null||upright?"human":scene.measurementSource,["R05","R06","R07"]);
   const legs=read("legs"),unstable=read("unstable");
   const ke=legs===null?null:legs==="sitting"?0:raw.knee.value===null?manual("kneeExtra"):kneeExtra(raw.knee.value);
   finish("knee",legs===null||unstable===null?null:legs==="unilateral"||unstable?2:1,ke,"human",["R08","R09"]);
   const abducted=read("armAbducted"),raised=read("shoulderRaised"),supported=read("armSupported");
-  finish("upperArm",raw.upperArm.value===null?manual("upperArmBase"):upperArmBase(raw.upperArm.value),abducted===null||raised===null||supported===null?null:Number(abducted)+Number(raised)-Number(supported),raw.upperArm.value===null?"human":"video",["R10","R11","R12","R13"]);
-  finish("lowerArm",raw.lowerArm.value===null?manual("lowerArmBase"):lowerArmBase(raw.lowerArm.value),0,raw.lowerArm.value===null?"human":"video",["R14"]);
+  finish("upperArm",raw.upperArm.value===null?manual("upperArmBase"):upperArmBase(raw.upperArm.value),abducted===null||raised===null||supported===null?null:Number(abducted)+Number(raised)-Number(supported),raw.upperArm.value===null?"human":scene.measurementSource,["R10","R11","R12","R13"]);
+  finish("lowerArm",raw.lowerArm.value===null?manual("lowerArmBase"):lowerArmBase(raw.lowerArm.value),0,raw.lowerArm.value===null?"human":scene.measurementSource,["R14"]);
   finish("wrist",manual("wristBase"),pair("wristDeviated","wristTwisted"),"human",["R15","R16"]);
   const kg=read("loadKg"),shock=read("shock");result.load=kg===null||shock===null?null:loadPoints(kg)+Number(shock);
   const coupling=fields.coupling.state==="not_applicable"?0:read("coupling");

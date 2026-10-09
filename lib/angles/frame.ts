@@ -2,6 +2,7 @@ import type { Angles, EnginePolicy, Facing, FrameSize, JointStatus, Landmark, Me
 import { MEASUREMENT_DEFINITIONS, PARTS } from "./definitions.ts";
 import { resolvePolicy } from "../config.ts";
 import { integerInRange, numberInRange } from "../validation.ts";
+import { calculateAngle, length, pixel, type JointPoints } from "./geometry.ts";
 
 export function jointsOf(side: Side) {
   if (side !== "left" && side !== "right") throw new TypeError("side: left 또는 right가 필요합니다.");
@@ -28,22 +29,6 @@ export function jointStatus(point: Landmark | undefined, policy: EnginePolicy): 
 
 function validLandmarks(points: readonly Landmark[]): boolean {
   return Array.isArray(points) && points.length === 33;
-}
-
-type Point = { x: number; y: number };
-function pixel(point: Landmark, size: FrameSize): Point {
-  return { x: point.x * size.width, y: point.y * size.height };
-}
-function length(a: Point, b: Point): number { return Math.hypot(a.x - b.x, a.y - b.y); }
-function flexion(a: Point, center: Point, b: Point): number | null {
-  const denominator = length(a, center) * length(b, center);
-  if (denominator < 1e-8) return null;
-  const cosine = ((a.x - center.x) * (b.x - center.x) + (a.y - center.y) * (b.y - center.y)) / denominator;
-  return 180 - Math.acos(Math.max(-1, Math.min(1, cosine))) * 180 / Math.PI;
-}
-function wrap(degrees: number, lower: number): number {
-  const value = ((degrees - lower) % 360 + 360) % 360 + lower;
-  return value === lower ? lower + 360 : value;
 }
 
 export function chooseView(frames: readonly PoseFrame[], options: { side?: Side; facing?: Facing } = {},
@@ -115,15 +100,15 @@ export function measureFrame(frame: PoseFrame, size: FrameSize, side: Side, faci
   const measureSide = (at: Side): SideMeasurements => {
     const j = jointsOf(at);
     const p = (index: number) => pixel(points[index]!,size);
-    const degrees = 180 / Math.PI;
-    const trunk = () => Math.atan2(facing! * (p(j.shoulder).x-p(j.hip).x),-(p(j.shoulder).y-p(j.hip).y))*degrees;
+    const jointPoints:JointPoints = {ear:points[j.ear]??null,shoulder:points[j.shoulder]??null,elbow:points[j.elbow]??null,
+      wrist:points[j.wrist]??null,index:points[j.index]??null,hip:points[j.hip]??null,knee:points[j.knee]??null,ankle:points[j.ankle]??null};
     const specs: Record<PartName,{joints:number[];signed:boolean;calculate:()=>number|null}> = {
-      trunk:{joints:[j.hip,j.shoulder],signed:true,calculate:trunk},
-      neck:{joints:[j.hip,j.shoulder,j.ear],signed:true,calculate:()=>wrap(Math.atan2(facing!*(p(j.ear).x-p(j.shoulder).x),-(p(j.ear).y-p(j.shoulder).y))*degrees-trunk()-policy.neckNeutralOffsetDeg,-180)},
-      upperArm:{joints:[j.hip,j.shoulder,j.elbow],signed:true,calculate:()=>wrap(Math.atan2(facing!*(p(j.elbow).x-p(j.shoulder).x),p(j.elbow).y-p(j.shoulder).y)*degrees+trunk(),-90)},
-      lowerArm:{joints:[j.shoulder,j.elbow,j.wrist],signed:false,calculate:()=>flexion(p(j.shoulder),p(j.elbow),p(j.wrist))},
-      knee:{joints:[j.hip,j.knee,j.ankle],signed:false,calculate:()=>flexion(p(j.hip),p(j.knee),p(j.ankle))},
-      wrist:{joints:[j.elbow,j.wrist,j.index],signed:false,calculate:()=>flexion(p(j.elbow),p(j.wrist),p(j.index))},
+      trunk:{joints:[j.hip,j.shoulder],signed:true,calculate:()=>calculateAngle("trunk",jointPoints,size,facing)},
+      neck:{joints:[j.hip,j.shoulder,j.ear],signed:true,calculate:()=>calculateAngle("neck",jointPoints,size,facing,policy.neckNeutralOffsetDeg)},
+      upperArm:{joints:[j.hip,j.shoulder,j.elbow],signed:true,calculate:()=>calculateAngle("upperArm",jointPoints,size,facing)},
+      lowerArm:{joints:[j.shoulder,j.elbow,j.wrist],signed:false,calculate:()=>calculateAngle("lowerArm",jointPoints,size,facing)},
+      knee:{joints:[j.hip,j.knee,j.ankle],signed:false,calculate:()=>calculateAngle("knee",jointPoints,size,facing)},
+      wrist:{joints:[j.elbow,j.wrist,j.index],signed:false,calculate:()=>calculateAngle("wrist",jointPoints,size,facing)},
     };
     return Object.fromEntries(PARTS.map(part=>{
       const spec=specs[part]; const reasons:QualityReason[]=[...global];

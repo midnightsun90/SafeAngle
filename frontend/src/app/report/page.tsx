@@ -61,7 +61,7 @@ export default function ReportPage() {
   const labels:Record<PartName,string>={trunk:"몸통",neck:"목",knee:"다리·무릎",upperArm:"위팔",lowerArm:"아래팔",wrist:"손목"};
   const realRows=(Object.keys(labels) as PartName[]).map(part=>{
     const p=real?.parts[part];
-    return {item:labels[part],value:p?`${p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}${p.measurement.approximate?" (근사)":""} · 기본 ${p.source==="human"?"사람 확인":p.source==="video"?"영상 측정":"미확인"} · ${p.evidenceIds.join(", ")} ${p.notes.join(" ")}`:"장면·입력 확인 필요",base:points(p?.base),adjustment:points(p?.adjustment),score:points(p?.score)};
+    return {item:labels[part],value:p?`${p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}${p.measurement.approximate?" (근사)":""} · 기본 ${p.source==="human"?"사람 확인":p.source==="vlm"?"GPT 좌표·사람 확인":p.source==="video"?"영상 측정":"미확인"} · ${p.evidenceIds.join(", ")} ${p.notes.join(" ")}`:"장면·입력 확인 필요",base:points(p?.base),adjustment:points(p?.adjustment),score:points(p?.score)};
   });
   realRows.push(
     {item:"무게·힘",value:`사람 확인 ${answer("loadKg")} kg/kgf · 충격 ${answer("shock")}`,base:"해당 없음",adjustment:points(real?.load),score:points(real?.load)},
@@ -88,6 +88,12 @@ export default function ReportPage() {
       </div>
       <p className="results-disclaimer">{sampleDetails ? "아래 수치는 이미지 시안의 예시입니다. 실제 영상 분석 결과가 아닙니다." : demoMode ? "이 영상의 상세 항목 예시는 제공되지 않았습니다. 아래 표는 기준표이며 점수는 계산하지 않았습니다." : "같은 영상·장면·쪽의 원본 측정과 사람 확인만 사용합니다. 확인 전에는 최종 점수를 내지 않습니다. 법적 부담작업 해당 여부는 미확인, 유해요인조사 전체는 미완료입니다."}</p>
       {real&&real.final===null&&<p className="result-note">필수 확인 {real.pending.length}개가 남았습니다. 영상 평가 화면에서 현장 조건과 보이는 부위를 확인하십시오.</p>}
+
+      {real?.evidence&&<section className="report-table-section" aria-label="GPT 관절 근거"><h2>대표 장면과 관절 확인 기록</h2>
+        <p>{real.evidence.provenance.model} · {real.evidence.provenance.promptVersion} · {real.scene.timeSec.toFixed(2)}초 · {real.scene.side==="left"?"왼쪽":"오른쪽"}. 좌표는 이미지의 왼쪽 위를 기준으로 한 비율이며, 각도는 확인 후 코드로 계산했습니다.</p>
+        <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/>
+        <div className="report-table-scroll"><table className="report-item-table"><thead><tr><th>관절</th><th>GPT 원 제안 (x, y)</th><th>사람 확인·수정 (x, y)</th></tr></thead><tbody>{Object.entries(real.evidence.reviewedPoints).map(([name,p])=>{const before=real.evidence!.originalPoints[name as keyof typeof real.evidence.originalPoints];const format=(point:typeof p)=>point?`${point.x.toFixed(4)}, ${point.y.toFixed(4)}`:"관측 불가";return <tr key={name}><th>{name}</th><td>{format(before)}</td><td>{format(p)}</td></tr>;})}</tbody></table></div>
+      </section>}
 
       <section className="report-items" aria-labelledby="report-items-title">
         <h2 id="report-items-title">항목별 판정 요약</h2>

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
-import { analyzeVideo, type VideoAnalysis } from "../../../lib/pose/video.ts";
-import { analyzePoses } from "../../../lib/analysis.ts";
-import { drawPose } from "../../../lib/pose/draw.ts";
-import { confirmed, emptyAnswers, sceneBlockReasons, sceneFromAnalysis, scoreScene, unknown } from "../../../lib/reba/score.ts";
+import { captureFrame } from "@/lib/captureFrame";
+import { requestJoints } from "@/lib/visionClient";
+import { confirmed, emptyAnswers, scorePostureScene, unknown } from "../../../lib/reba/score.ts";
+import { sceneFromVlm } from "../../../lib/vlm/measure.ts";
+import { VLM_JOINTS, type VlmEvidence, type VlmJoint, type VlmPoints, type VlmProposal, type VlmRequest } from "../../../lib/vlm/contract.ts";
 import type { AnswerName, AnswerValues, Confirmation, RebaAnswers } from "../../../lib/reba/types.ts";
-import type { Analysis, Facing, PartName, Side } from "../../../lib/types.ts";
+import type { Facing, PartName, Side } from "../../../lib/types.ts";
 import "./evaluation.css";
 
 const LABELS:Record<PartName,string>={neck:"목",trunk:"몸통",knee:"다리·무릎",upperArm:"위팔",lowerArm:"아래팔",wrist:"손목"};
@@ -53,7 +54,7 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
     setError("");replaceFiles(Array.from(files));setActive(0);onStage(3);
   }
   return <section className="sa-evaluation" aria-label="작업 영상 REBA 평가">
-    <div className="sa-form-card"><h2>평가할 영상</h2><p>같은 장면의 목·팔·다리를 함께 평가합니다. 영상은 서버로 전송되지 않습니다.</p>
+    <div className="sa-form-card"><h2>평가할 영상</h2><p>같은 장면의 목·팔·다리를 함께 평가합니다. 영상 전체는 로컬에 남고, 동의한 대표 장면 한 장만 GPT로 전송합니다.</p>
       <label className="sa-question"><span>영상 파일 (최대 3편, 각 60초·250MB 이내)</span><input id="evaluation-files" type="file" accept="video/*" multiple disabled={busy} onChange={e=>choose(e.target.files)}/></label>
       <p className="sa-muted">측면에서 한 사람의 전신과 손목을 담아 주세요. 영상을 다시 선택하면 현재 분석과 답변이 초기화됩니다. 새로고침하면 파일을 다시 선택해야 합니다.</p>
       {error&&<p role="alert" className="sa-error">{error}</p>}
@@ -63,74 +64,96 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
   </section>;
 }
 
+const JOINT_LABELS:Record<VlmJoint,string>={ear:"귀",shoulder:"어깨",elbow:"팔꿈치",wrist:"손목",index_mcp:"검지 MCP",hip:"고관절",knee:"무릎",ankle:"발목"};
+const CONNECTIONS:[VlmJoint,VlmJoint][]=[["ear","shoulder"],["shoulder","hip"],["shoulder","elbow"],["elbow","wrist"],["wrist","index_mcp"],["hip","knee"],["knee","ankle"]];
+type Coordinates=Record<VlmJoint,{x:string;y:string}>;
+function coordinateInputs(points:VlmPoints):Coordinates{return Object.fromEntries(VLM_JOINTS.map(name=>[name,{x:points[name]?(points[name]!.x*100).toFixed(2):"",y:points[name]?(points[name]!.y*100).toFixed(2):""}])) as Coordinates;}
+
 function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:VideoNumber;file:File;videoId:string;active:boolean;onBusy:(v:boolean)=>void;onStage:(n:number)=>void}){
   const {publishResult}=useVideoFiles();
   const activeId=(name:string)=>active?name:undefined;
-  const [url,setUrl]=useState(""),[analysis,setAnalysis]=useState<VideoAnalysis|null>(null),[phase,setPhase]=useState("분석 전"),[error,setError]=useState("");
-  const [busy,setBusy]=useState(false),[progress,setProgress]=useState([0,1]),[index,setIndex]=useState(0),[side,setSide]=useState<Side>("left"),[facing,setFacing]=useState<Facing|null>(null);
-  const [answers,setAnswers]=useState<RebaAnswers|null>(null),[aligned,setAligned]=useState(false);
-  const controller=useRef<AbortController|null>(null),runId=useRef(0),video=useRef<HTMLVideoElement>(null),canvas=useRef<HTMLCanvasElement>(null);
+  const [url,setUrl]=useState(""),[phase,setPhase]=useState("대표 장면 선택"),[error,setError]=useState("");
+  const [busy,setBusy]=useState(false),[duration,setDuration]=useState(0),[time,setTime]=useState(0),[side,setSide]=useState<Side|null>(null),[facing,setFacing]=useState<Facing|null>(null);
+  const [consent,setConsent]=useState(false),[sceneChecked,setSceneChecked]=useState(false),[reviewChecked,setReviewChecked]=useState(false);
+  const [proposal,setProposal]=useState<VlmProposal|null>(null),[points,setPoints]=useState<VlmPoints|null>(null),[coords,setCoords]=useState<Coordinates|null>(null),[joint,setJoint]=useState<VlmJoint>("shoulder");
+  const [image,setImage]=useState(""),[evidence,setEvidence]=useState<VlmEvidence|null>(null),[answers,setAnswers]=useState<RebaAnswers|null>(null);
+  const controller=useRef<AbortController|null>(null),runId=useRef(0),revision=useRef(0),video=useRef<HTMLVideoElement>(null);
   useEffect(()=>{const objectUrl=URL.createObjectURL(file);setUrl(objectUrl);return()=>{runId.current++;controller.current?.abort();URL.revokeObjectURL(objectUrl);};},[file]);
-  const view:Analysis|null=useMemo(()=>analysis&&facing!==analysis.facing?analyzePoses(analysis.frames.map(f=>({timeSec:f.timeSec,personCount:f.personCount,landmarks:f.landmarks})),analysis.size,facing===null?{policy:analysis.policy}:{facing,policy:analysis.policy}):analysis,[analysis,facing]);
-  const frame=view?.frames[index];
-  const scene=useMemo(()=>view&&frame?sceneFromAnalysis(view,videoId,index,side):null,[view,frame,videoId,index,side]);
-  const {score,scoreError}=useMemo(()=>{try{return {score:scene&&answers?scoreScene(scene,answers):null,scoreError:""};}catch(e){return {score:null,scoreError:e instanceof Error?e.message:String(e)};}},[scene,answers]);
+  const scene=useMemo(()=>evidence?sceneFromVlm(evidence):null,[evidence]);
+  const {score,scoreError}=useMemo(()=>{try{return {score:scene&&answers?scorePostureScene(scene,answers):null,scoreError:""};}catch(e){return {score:null,scoreError:e instanceof Error?e.message:String(e)};}},[scene,answers]);
   useEffect(()=>publishResult(number,score),[number,score,publishResult]);
   useEffect(()=>{if(active&&answers)onStage(score?.status==="complete"?6:4);},[active,answers,score?.status,onStage]);
-
-  useEffect(()=>{
-    const player=video.current,overlay=canvas.current;if(!player||!overlay)return;
-    const ctx=overlay.getContext("2d");ctx?.clearRect(0,0,overlay.width,overlay.height);setAligned(false);
-    if(!frame||!view)return;
-    const draw=()=>{if(player.readyState<2 || Math.abs(player.currentTime-frame.timeSec)>0.002)return;overlay.width=view.size.width;overlay.height=view.size.height;drawPose(overlay,frame,view.size);setAligned(true);};
-    const seek=()=>{player.pause();if(Math.abs(player.currentTime-frame.timeSec)<=0.002)draw();else player.currentTime=frame.timeSec;};
-    player.addEventListener("seeked",draw);player.addEventListener("loadeddata",seek);
-    if(player.readyState>=2)seek();
-    return()=>{player.removeEventListener("seeked",draw);player.removeEventListener("loadeddata",seek);};
-  },[frame,view]);
-
+  function invalidate(){controller.current?.abort();revision.current++;setProposal(null);setPoints(null);setCoords(null);setImage("");setEvidence(null);setAnswers(null);setReviewChecked(false);setPhase("대표 장면 선택");setError("");onStage(3);}
+  function clearConfirmation(){setEvidence(null);setAnswers(null);setReviewChecked(false);onStage(3);}
+  function editPoint(name:VlmJoint,point:VlmPoints[VlmJoint]){setPoints(old=>old?{...old,[name]:point}:old);clearConfirmation();}
+  function coordinate(name:VlmJoint,axis:"x"|"y",value:string){
+    if(!coords)return;const next={...coords[name],[axis]:value};setCoords({...coords,[name]:next});
+    const x=Number(next.x)/100,y=Number(next.y)/100;
+    editPoint(name,next.x.trim()&&next.y.trim()&&Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&x<=1&&y>=0&&y<=1?{x,y}:null);
+  }
   async function analyze(){
-    controller.current?.abort();const abort=new AbortController();controller.current=abort;const id=++runId.current;
-    setBusy(true);onBusy(true);setAnalysis(null);setAnswers(null);setError("");setProgress([0,1]);onStage(3);
+    if(!video.current||!side||!facing||!consent||!sceneChecked){setError("평가할 쪽·몸 방향·장면 확인과 전송 동의를 완료하십시오.");return;}
+    if(file.size===0||file.size>250*1024*1024){setError("영상은 0MB 초과·250MB 이내여야 합니다.");return;}
+    controller.current?.abort();const abort=new AbortController();controller.current=abort;const id=++runId.current,rev=++revision.current;
+    setBusy(true);onBusy(true);setProposal(null);setPoints(null);setCoords(null);setEvidence(null);setAnswers(null);setReviewChecked(false);setError("");setPhase("대표 장면을 추출하는 중");onStage(3);
     try{
-      const result=await analyzeVideo(file,{assetBasePath:process.env.NEXT_PUBLIC_BASE_PATH??"",signal:abort.signal,onState:s=>{if(runId.current===id)setPhase({decoding:"영상을 읽는 중", "loading-model":"관절 모델 준비 중",analyzing:"관절을 추적하는 중",measuring:"각도를 계산하는 중"}[s]);},onProgress:(done,total)=>{if(runId.current===id)setProgress([done,total]);}});
-      if(runId.current!==id)return;
-      setAnalysis(result);setSide(result.side);setFacing(result.facing);setIndex(Math.max(0,result.frames.findIndex(f=>f.status!=="unusable"&&!f.requiresReview)));
-      setPhase(`분석 완료: ${result.frames.length}장면, ${result.runtime.delegate}, ${(result.runtime.elapsedMs/1000).toFixed(1)}초`);
-    }catch(e){if(runId.current===id){setError(abort.signal.aborted?"분석을 취소했습니다. 다시 분석할 수 있습니다.":e instanceof Error?e.message:String(e));setPhase(abort.signal.aborted?"분석 취소":"분석 실패");}}
+      const captured=await captureFrame(video.current,time,abort.signal);if(runId.current!==id)return;
+      setImage(captured.imageDataUrl);setPhase("GPT가 관절을 제안하는 중, 비교 실험에서 한 장 약 24~60초");
+      const input:VlmRequest={schemaVersion:"safeangle-joints-v1",requestId:crypto.randomUUID(),capture:{scene:{videoId,frameIndex:rev,timeSec:captured.timeSec,side},revision:rev,imageSize:captured.imageSize,facing},imageDataUrl:captured.imageDataUrl,consent:{granted:true,noticeVersion:"representative-frame-v1"}};
+      const result=await requestJoints(input,abort.signal);
+      if(runId.current!==id||revision.current!==rev||abort.signal.aborted)return;
+      setProposal(result);setPoints(structuredClone(result.points));setCoords(coordinateInputs(result.points));setPhase(`GPT 제안 완료 · ${(result.provenance.elapsedMs/1000).toFixed(1)}초 · 관절을 확인하십시오`);
+    }catch(e){if(runId.current===id){setError(abort.signal.aborted?"분석을 취소했습니다. 다시 요청할 수 있습니다.":e instanceof Error?e.message:String(e));setPhase(abort.signal.aborted?"요청 취소":"분석 실패");}}
     finally{if(runId.current===id){setBusy(false);onBusy(false);}}
   }
-  function changeScene(act:()=>void){act();setAnswers(null);onStage(3);}
+  function confirmCoordinates(){
+    if(!proposal||!points||!reviewChecked)return;
+    const checked:VlmEvidence={requestId:proposal.requestId,imageDataUrl:image,capture:proposal.capture,provenance:proposal.provenance,originalPoints:proposal.points,reviewedPoints:points,confirmedBy:"human"};
+    const selected=sceneFromVlm(checked);if(selected.availability.state!=="ready"){setError(selected.availability.reasons.join(" "));return;}
+    setEvidence(checked);setAnswers(emptyAnswers(selected.key));onStage(4);
+  }
   function setField<K extends AnswerName>(name:K,value:Confirmation<AnswerValues[K]>){setAnswers(old=>old?{...old,fields:{...old.fields,[name]:value}}:old);}
   function chooseField<K extends AnswerName>(name:K,value:string,parse:(v:string)=>AnswerValues[K],observable=false){
     setField(name,value===""?unknown():value==="unavailable"?{state:"unavailable",source:"human",value:null,observable:false}:value==="not_applicable"?{state:"not_applicable",source:"human",value:null,observable:false}:confirmed(parse(value),observable));
   }
   function bool(name:AnswerName,label:string){return <SelectQuestion key={name} name={name} label={label} field={answers!.fields[name]} options={[["false","아니요"],["true","예"]]} change={v=>chooseField(name,v,x=>x==="true")}/>;}
-  function band(name:BandName){const part=bandPart[name],m=frame!.measurements[side][part];return <SelectQuestion key={name} name={name} label={`${LABELS[part]}: 장면에서 실제로 보이는 구간을 확인 (${m.value===null?"측정 불가":m.value.toFixed(1)+"° 추정"})`} field={answers!.fields[name]} options={BAND_OPTIONS[name]} change={v=>chooseField(name,v,Number,true)}/>;}
-  const globalBlocked=frame&&sceneBlockReasons(frame).length>0;
+  function band(name:BandName){const part=bandPart[name],m=scene!.measurements![part];return <SelectQuestion key={name} name={name} label={`${LABELS[part]}: 장면에서 실제로 보이는 구간을 확인 (${m.value===null?"측정 불가":m.value.toFixed(1)+"° 추정"})`} field={answers!.fields[name]} options={BAND_OPTIONS[name]} change={v=>chooseField(name,v,Number,true)}/>;}
   return <>
-    <section className="sa-form-card"><div className="sa-evaluation-head"><h2>장면과 관절 확인</h2><div className="sa-controls"><button type="button" className="sa-button" disabled={busy} onClick={()=>void analyze()}>{analysis?"다시 분석":"관절 분석 시작"}</button>{busy&&<button type="button" className="sa-button" data-variant="outline" onClick={()=>controller.current?.abort()}>분석 취소</button>}</div></div>
-      <p id={activeId("analysis-phase")} role="status">{phase}</p>{busy&&<><progress aria-label="관절 추적 진행" max={progress[1]} value={progress[0]}/><span> {progress[0]} / {progress[1]}</span><p className="sa-muted">첫 추론 중에는 화면이 잠시 멈추며 취소가 지연될 수 있습니다.</p></>}
-      {error&&<p role="alert" className="sa-error">{error}</p>}
-      <div className="sa-video-stage" style={view?{aspectRatio:`${view.size.width}/${view.size.height}`}:{}}><video id={activeId("evaluation-video")} ref={video} src={url} preload="auto" muted playsInline controls={!analysis}/><canvas id={activeId("evaluation-overlay")} ref={canvas} aria-label="추정 관절 뼈대"/></div>
-      {view&&frame&&<>
-        <div className="sa-scene-controls"><label>평가 장면 <input id={activeId("evaluation-timeline")} aria-label="평가 장면" type="range" min="0" max={view.frames.length-1} step="1" value={index} onChange={e=>changeScene(()=>setIndex(Number(e.target.value)))}/></label><output id={activeId("evaluation-time")}>{frame.timeSec.toFixed(2)}초</output>
-          <label>평가할 사람 기준 쪽 <select id={activeId("evaluation-side")} value={side} onChange={e=>changeScene(()=>setSide(e.target.value as Side))}><option value="left">왼쪽</option><option value="right">오른쪽</option></select></label>
-          <label>화면에서 몸이 향하는 방향 <select id={activeId("evaluation-facing")} value={facing??"auto"} onChange={e=>changeScene(()=>setFacing(e.target.value==="auto"?null:Number(e.target.value) as Facing))}><option value="auto">자동</option><option value="1">화면 오른쪽</option><option value="-1">화면 왼쪽</option></select></label>
-        </div>
-        <p className="sa-muted">이 장면만 평가합니다. 목·손목은 2차원 근사치이며 손가락 관절·비틀림은 자동 확정하지 않습니다. <span id={activeId("scene-aligned")}>{aligned?"영상·뼈대 시각 일치":"영상 시각 맞추는 중"}</span></p>
-        {globalBlocked&&<p className="sa-error" role="alert">이 장면은 채점할 수 없습니다. {frame.reasons.map(r=>REASONS[r]??r).join(" / ")} {frame.requiresReview&&"대상 교체·추적 확인이 필요합니다."} 다른 장면 또는 한 사람의 측면 영상을 선택하십시오.</p>}
-        <div className="sa-table-scroll"><table id={activeId("measurement-table")}><caption>같은 장면의 양쪽 측정 원본, 각도(°)</caption><thead><tr><th>부위</th><th>왼쪽</th><th>오른쪽</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=><tr key={part}><th>{LABELS[part]}</th>{(["left","right"] as Side[]).map(at=>{const m=frame.measurements[at][part];return <td key={at}>{m.value===null?"측정 불가":m.value.toFixed(1)+"°"}{m.approximate&&" (근사)"}{!!m.reasons.length&&<small>{m.reasons.map(r=>REASONS[r]??r).join(", ")}</small>}</td>;})}</tr>)}</tbody></table></div>
-        <button type="button" className="sa-button" disabled={!!globalBlocked||!aligned||!!answers} onClick={()=>{setAnswers(emptyAnswers(scene!.key));onStage(4);}}>이 장면·쪽으로 확인 질문 작성</button>
+    <section className="sa-form-card"><h2>대표 장면과 GPT 관절 확인</h2>
+      <p id={activeId("analysis-phase")} role="status">{phase}</p>{error&&<p role="alert" className="sa-error">{error}</p>}
+      <div className="sa-video-stage" style={proposal?{aspectRatio:`${proposal.capture.imageSize.width}/${proposal.capture.imageSize.height}`}:{}}>
+        <video id={activeId("evaluation-video")} ref={video} src={url} preload="auto" muted playsInline style={image?{display:"none"}:{}} onLoadedMetadata={e=>{const d=e.currentTarget.duration;if(!Number.isFinite(d)||d<=0||d>60)setError("60초 이내의 영상을 선택하십시오.");else setDuration(d);}} onError={()=>setError("영상을 읽을 수 없습니다. 다른 파일을 선택하십시오.")}/>
+        {image&&<img src={image} alt="GPT에 전송한 대표 장면" style={{display:"block",width:"100%"}}/>}
+        {proposal&&points&&<svg id={activeId("evaluation-overlay")} role="img" aria-label="GPT가 제안한 관절, 아래 좌표 입력으로 수정 가능" viewBox={`0 0 ${proposal.capture.imageSize.width} ${proposal.capture.imageSize.height}`} style={{position:"absolute",inset:0,width:"100%",height:"100%"}} onPointerDown={e=>{
+          const box=e.currentTarget.getBoundingClientRect();const p={x:Math.max(0,Math.min(1,(e.clientX-box.left)/box.width)),y:Math.max(0,Math.min(1,(e.clientY-box.top)/box.height))};editPoint(joint,p);setCoords(old=>old?{...old,[joint]:{x:(p.x*100).toFixed(2),y:(p.y*100).toFixed(2)}}:old);
+        }}>
+          {CONNECTIONS.map(([a,b])=>points[a]&&points[b]?<line key={a+b} x1={points[a]!.x*proposal.capture.imageSize.width} y1={points[a]!.y*proposal.capture.imageSize.height} x2={points[b]!.x*proposal.capture.imageSize.width} y2={points[b]!.y*proposal.capture.imageSize.height} stroke="#FF5A14" strokeWidth="3"/>:null)}
+          {VLM_JOINTS.map(name=>points[name]?<g key={name}><circle cx={points[name]!.x*proposal.capture.imageSize.width} cy={points[name]!.y*proposal.capture.imageSize.height} r="5" fill={name===joint?"#fff":"#FF5A14"} stroke="#171717"/><text x={points[name]!.x*proposal.capture.imageSize.width+8} y={points[name]!.y*proposal.capture.imageSize.height-8} fontSize="13" fill="#fff" stroke="#171717" strokeWidth="0.4">{JOINT_LABELS[name]}</text></g>:null)}
+        </svg>}
+      </div>
+      <div className="sa-scene-controls"><label>평가 장면 <input id={activeId("evaluation-timeline")} aria-label="평가 장면" type="range" min="0" max={Math.max(0,duration-0.001)} step="0.1" value={time} disabled={busy||!duration} onChange={e=>{invalidate();const t=Number(e.target.value);setTime(t);if(video.current)video.current.currentTime=t;}}/></label><output id={activeId("evaluation-time")}>{(proposal?.capture.scene.timeSec??time).toFixed(2)}초</output>
+        <label>평가할 사람 기준 쪽 <select id={activeId("evaluation-side")} value={side??""} disabled={busy} onChange={e=>{invalidate();setSceneChecked(false);setSide(e.target.value?e.target.value as Side:null);}}><option value="">선택하십시오</option><option value="left">왼쪽</option><option value="right">오른쪽</option></select></label>
+        <label>화면에서 몸이 향하는 방향 <select id={activeId("evaluation-facing")} value={facing??""} disabled={busy} onChange={e=>{invalidate();setSceneChecked(false);setFacing(e.target.value?Number(e.target.value) as Facing:null);}}><option value="">선택하십시오</option><option value="1">화면 오른쪽</option><option value="-1">화면 왼쪽</option></select></label>
+      </div>
+      <label className="sa-question"><span><input type="checkbox" checked={sceneChecked} disabled={busy} onChange={e=>{invalidate();setSceneChecked(e.target.checked);}}/> 한 사람의 측면 장면이며, 선택한 쪽을 실제로 볼 수 있습니다.</span></label>
+      <label className="sa-question"><span><input type="checkbox" checked={consent} disabled={busy} onChange={e=>{if(!e.target.checked)invalidate();setConsent(e.target.checked);}}/> 선택한 장면 한 장을 OpenAI API에 전송하는 데 동의합니다.</span></label>
+      <p className="sa-muted">전체 영상은 업로드하지 않습니다. 서버 저장을 요청하지 않지만 OpenAI의 별도 데이터 처리 정책이 적용됩니다. 영상 전체의 최악 자세를 자동 탐지하지 않습니다.</p>
+      <div className="sa-controls"><button type="button" className="sa-button" disabled={busy||!duration||!side||!facing||!sceneChecked||!consent} onClick={()=>void analyze()}>{proposal?"이 장면 다시 분석":"GPT 관절 분석"}</button>{busy&&<button type="button" className="sa-button" data-variant="outline" onClick={()=>controller.current?.abort()}>요청 취소</button>}</div>
+      {proposal&&points&&coords&&<>
+        <p>관절을 선택한 뒤 원본 위를 눌러 수정하거나 좌표를 입력하십시오. X는 왼쪽부터, Y는 위쪽부터의 위치(%)입니다. 보이지 않는 관절은 확인 불가로 남기십시오.</p>
+        <div className="sa-table-scroll"><table id={activeId("joint-editor")}><caption>같은 장면·같은 쪽의 GPT 제안과 사람 수정</caption><thead><tr><th>관절</th><th>X (%)</th><th>Y (%)</th><th>관측 상태</th></tr></thead><tbody>{VLM_JOINTS.map(name=><tr key={name}><th><button type="button" className="sa-link-button" aria-pressed={joint===name} onClick={()=>setJoint(name)}>{JOINT_LABELS[name]}</button></th>{(["x","y"] as const).map(axis=><td key={axis}><input aria-label={`${JOINT_LABELS[name]} ${axis.toUpperCase()} (%)`} type="number" min="0" max="100" step="0.01" value={coords[name][axis]} onChange={e=>coordinate(name,axis,e.target.value)} style={{maxWidth:"7rem"}}/></td>)}<td><button type="button" className="sa-link-button" onClick={()=>{editPoint(name,null);setCoords({...coords,[name]:{x:"",y:""}});}}>{points[name]?"확인 불가로 변경":"관측 불가"}</button></td></tr>)}</tbody></table></div>
+        <label className="sa-question"><span><input type="checkbox" checked={reviewChecked} disabled={!!evidence} onChange={e=>setReviewChecked(e.target.checked)}/> 선택한 사람·쪽의 관절 위치를 확인했고, 보이지 않는 점은 남겨 두었습니다.</span></label>
+        <button type="button" className="sa-button" disabled={!reviewChecked||!!evidence} onClick={confirmCoordinates}>관절 확인 완료, 작업 조건 입력</button>
+        {scene?.measurements&&<div className="sa-table-scroll"><table id={activeId("measurement-table")}><caption>사람이 확인한 좌표로 코드가 계산한 2차원 각도</caption><thead><tr><th>부위</th><th>각도</th><th>보류 근거</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=>{const m=scene.measurements![part];return <tr key={part}><th>{LABELS[part]}</th><td>{m.value===null?"측정 불가":m.value.toFixed(1)+"°"}{m.approximate&&" (근사)"}</td><td>{m.reasons.map(r=>REASONS[r]??r).join(", ")}</td></tr>;})}</tbody></table></div>}
       </>}
     </section>
-    {answers&&frame&&<section className="sa-form-card" id={activeId("reba-questions")}><h2>선택한 장면의 확인 질문</h2><p>부위가 보이지 않거나 작업 조건을 모르면 확인 불가로 남기십시오. 추정값을 최저점으로 채우지 않습니다.</p>
+    {answers&&scene?.measurements&&<section className="sa-form-card" id={activeId("reba-questions")}><h2>선택한 장면의 확인 질문</h2><p>부위가 보이지 않거나 작업 조건을 모르면 확인 불가로 남기십시오. 추정값을 최저점으로 채우지 않습니다.</p>
       <fieldset><legend>Q1 · 자세와 지지</legend><div className="sa-question-grid">
         {band("neckBase")}{bool("trunkUpright","몸통이 똑바로 선 중립 자세인가요?")}
-        {frame.measurements[side].trunk.value===null&&band("trunkBase")}
+        {scene.measurements.trunk.value===null&&band("trunkBase")}
         <SelectQuestion name="legs" label="다리 지지 상태" field={answers.fields.legs} options={[["bilateral","양발 지지"],["walking","보행"],["sitting","앉음"],["unilateral","한쪽 다리 지지"]]} change={v=>chooseField("legs",v,x=>x as AnswerValues["legs"])}/>
-        {frame.measurements[side].knee.value===null&&answers.fields.legs.value!=="sitting"&&band("kneeExtra")}
-        {frame.measurements[side].upperArm.value===null&&band("upperArmBase")}{frame.measurements[side].lowerArm.value===null&&band("lowerArmBase")}
+        {scene.measurements.knee.value===null&&answers.fields.legs.value!=="sitting"&&band("kneeExtra")}
+        {scene.measurements.upperArm.value===null&&band("upperArmBase")}{scene.measurements.lowerArm.value===null&&band("lowerArmBase")}
         {band("wristBase")}{BOOLEAN_QUESTIONS.map(([name,label])=>bool(name,label))}
       </div></fieldset>
       <fieldset><legend>Q2 · 실제 하중·힘</legend><p className="sa-muted">밀기·당기기는 물체 무게가 아닌 실제 가한 힘을 확인합니다. 힘은 kgf 상당값으로 입력하십시오.</p><div className="sa-question-grid">
@@ -144,12 +167,12 @@ function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:Vid
       </div></fieldset>
     </section>}
     {(score||scoreError)&&<section className="sa-form-card" id={activeId("reba-result")} aria-label="REBA 결과">
-      <div className="sa-score-header"><div><span className="sa-eyebrow">선택 장면 · {frame?.timeSec.toFixed(2)}초 · {side==="left"?"왼쪽":"오른쪽"}</span><h2>REBA 결과</h2></div><strong id={activeId("reba-final")} data-score={score?.final??""}>{score?.final===null||!score?"확정 점수 없음":`${score.final}점`}</strong></div>
+      <div className="sa-score-header"><div><span className="sa-eyebrow">선택 장면 · {scene?.key.timeSec.toFixed(2)}초 · {side==="left"?"왼쪽":"오른쪽"}</span><h2>REBA 결과</h2></div><strong id={activeId("reba-final")} data-score={score?.final??""}>{score?.final===null||!score?"확정 점수 없음":`${score.final}점`}</strong></div>
       {scoreError&&<p role="alert" className="sa-error">{scoreError}</p>}
       {score&&<>
         <p id={activeId("reba-action")} role="status">{score.action?`조치 수준 ${score.action.level} · ${score.action.risk} · ${score.action.action}`:`${score.status==="unavailable"?"현장 확인·재촬영 필요":"확인 질문을 완료하십시오"}. 미확인 ${score.pending.length}개`}</p>
         {!!score.pending.length&&<details open><summary>남은 확인 항목 ({score.pending.length})</summary><ul id={activeId("reba-pending")}>{score.pending.map(p=><li key={p.field}>{QUESTION_LABELS[p.field]??p.field}: {p.reason}</li>)}</ul></details>}
-        <div className="sa-table-scroll"><table id={activeId("reba-evidence")}><caption>부위별 근거, 원본 측정과 사람 확인을 구별합니다.</caption><thead><tr><th>부위</th><th>원본 각도</th><th>기본</th><th>가감</th><th>부위 점수</th><th>입력 출처·근거</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=>{const p=score.parts[part];return <tr key={part}><th>{LABELS[part]}</th><td>{p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}</td><td>{p.base??"미확인"}</td><td>{p.adjustment??"미확인"}</td><td>{p.score??"미확인"}</td><td>{p.source==="video"?"영상 측정":p.source==="human"?"사람 확인":"미확인"} · {p.evidenceIds.join(", ")}<small>{p.notes.join(" ")}</small></td></tr>;})}</tbody></table></div>
+        <div className="sa-table-scroll"><table id={activeId("reba-evidence")}><caption>부위별 근거, 원본 측정과 사람 확인을 구별합니다.</caption><thead><tr><th>부위</th><th>원본 각도</th><th>기본</th><th>가감</th><th>부위 점수</th><th>입력 출처·근거</th></tr></thead><tbody>{(Object.keys(LABELS) as PartName[]).map(part=>{const p=score.parts[part];return <tr key={part}><th>{LABELS[part]}</th><td>{p.measurement.value===null?"측정 불가":p.measurement.value.toFixed(1)+"°"}</td><td>{p.base??"미확인"}</td><td>{p.adjustment??"미확인"}</td><td>{p.score??"미확인"}</td><td>{p.source==="vlm"?"GPT 좌표·사람 확인":p.source==="video"?"영상 측정":p.source==="human"?"사람 확인":"미확인"} · {p.evidenceIds.join(", ")}<small>{p.notes.join(" ")}</small></td></tr>;})}</tbody></table></div>
         <p id={activeId("reba-calculation")}>표 A {score.tableA??"?"} + 하중·충격 {score.load??"?"} = A {score.scoreA??"?"} / 표 B {score.tableB??"?"} + 손잡이 {score.coupling??"?"} = B {score.scoreB??"?"} / 표 C {score.tableC??"?"} + 활동 {score.activity??"?"} = {score.final??"미확정"}</p>
         {score.activityBreakdown&&<p>활동 근거: 1분 초과 정지 +{score.activityBreakdown.static}, 분당 4회 초과 반복(보행 제외) +{score.activityBreakdown.repeated}, 빠른 변화 또는 불안정 지지 +{score.activityBreakdown.rapidOrUnstable}</p>}
         <p className="sa-muted">법적 부담작업 해당 여부: 미확인. 유해요인조사 전체: 미완료. REBA는 선택 장면의 자세 평가이며 법적 조사 완료를 뜻하지 않습니다.</p>
