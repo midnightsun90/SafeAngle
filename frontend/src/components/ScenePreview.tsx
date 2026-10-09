@@ -42,7 +42,7 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
           }}
         />
       ) : (
-        <div className="scene-preview-empty"><Link href={`/upload/${number}`}>영상 {number} 선택하기</Link></div>
+        <div className="scene-preview-empty"><Link className="confirmation-soft-button" href={`/upload/${number}`}>영상 {number} 선택하기</Link></div>
       )}
       {error && <p role="alert">{error}</p>}
       {(demoMode || selectedTime !== null) && (

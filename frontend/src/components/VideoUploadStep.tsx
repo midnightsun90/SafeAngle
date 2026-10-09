@@ -106,7 +106,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
         </div>
 
         <label
-          className={`upload-zone${isDragging ? " upload-zone-dragging" : ""}`}
+          className={`upload-zone${selectedFile || storedVideo ? " upload-zone-filled" : ""}${isDragging ? " upload-zone-dragging" : ""}`}
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}

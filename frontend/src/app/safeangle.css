@@ -129,6 +129,8 @@
   transition: border-color .15s ease, background-color .15s ease;
 }
 
+.upload-zone-filled { background: #f3f4f6; }
+
 .upload-zone:hover, .upload-zone-dragging, .upload-zone:focus-within {
   border-color: var(--accent);
   background: #fffaf7;
@@ -231,7 +233,7 @@
 }
 
 .review-empty p { margin: 0; color: var(--muted); font-size: 14px; }
-.review-empty a { color: var(--accent); font-size: 14px; font-weight: 600; }
+.review-empty a:not(.confirmation-soft-button) { color: var(--accent); font-size: 14px; font-weight: 600; }
 
 .review-actions {
   display: flex;
@@ -286,7 +288,7 @@
 .scene-preview img { object-fit: cover; }
 .scene-preview video { display: block; width: 100%; height: 100%; object-fit: contain; background: #111; }
 .scene-preview-empty { display: grid; place-items: center; height: 100%; border: 1px dashed var(--line); }
-.scene-preview-empty a { color: var(--accent); }
+.scene-preview-empty a:not(.confirmation-soft-button) { color: var(--accent); }
 .question-form { margin-top: 48px; }
 .question-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(32px, 5vw, 90px); row-gap: 34px; }
 .question-field { min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -324,7 +326,7 @@
 .analysis-inputs { margin-top: 25px; padding: 17px 19px; border-radius: 8px; background: #f7f8fa; font-size: 14px; }
 .analysis-inputs p { margin: 7px 0 0; color: var(--muted); }
 .analysis-actions { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 30px; }
-.analysis-actions a, .analysis-actions button { padding: 0; border: 0; background: none; color: #505967; font: inherit; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.analysis-actions a:not(.confirmation-soft-button), .analysis-actions button { padding: 0; border: 0; background: none; color: #505967; font: inherit; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .analysis-result-link, .results-footer .next-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 
 .results-topline { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 10px; }
@@ -452,4 +454,11 @@
 .confirmation-conditions > div { border-bottom: 1px solid var(--line); padding: 12px 0; }
 .confirmation-conditions dt { font-weight: 600; }
 .confirmation-conditions dd { margin: 4px 0 0; color: var(--muted); }
+.confirmation-edit-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.confirmation-edit-actions p { margin: 0; }
+.confirmation-soft-button { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border: 1px solid #ffd4bf; border-radius: 8px; background: #fff0e8; color: #a83b0b; font: inherit; font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; cursor: pointer; transition: background 150ms, border-color 150ms; }
+.analysis-content > .confirmation-soft-button { margin-top: 24px; }
+.confirmation-soft-button:hover:not(:disabled) { background: #ffe2d2; border-color: #ffb896; }
+.confirmation-soft-button:focus-visible { outline: 2px solid #ff5a14; outline-offset: 3px; }
+.confirmation-soft-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .next-button:disabled { background: #e5e7eb; color: #6b7280; cursor: not-allowed; }
