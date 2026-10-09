@@ -1,0 +1,50 @@
+.report-detail { max-width: 1050px; margin: 0 auto; padding: 16px 0 80px; }
+.report-detail-back { margin: -24px 0 26px; }
+.report-detail-back a { color: #596575; font-size: 14px; text-decoration: none; }
+.report-detail-back a:hover { color: #c64611; }
+.report-detail-lead { color: #414a56; line-height: 1.6; }
+.report-detail-notice { padding: 15px 18px; border-left: 3px solid #f15a20; background: #fff8f4; color: #785744; line-height: 1.6; }
+.report-detail-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 30px 0; }
+.report-detail-tabs button { display: grid; gap: 14px; min-height: 98px; padding: 17px; border: 1px solid #e2e5e9; border-radius: 10px; background: #fff; text-align: left; cursor: pointer; }
+.report-detail-tabs button[aria-pressed="true"] { border-color: #f15a20; box-shadow: inset 0 0 0 1px #f15a20; }
+.report-detail-tabs button strong { font-size: 14px; }
+.report-detail-tabs button span, .report-detail-heading span { color: #6b7280; font-size: 12px; }
+.report-detail-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; padding: 0 0 22px; border-bottom: 1px solid #e2e5e9; }
+.report-detail-heading h2 { margin: 6px 0 0; font-size: 22px; }
+.report-detail-heading p { margin: 0; color: #697381; font-size: 13px; }
+.report-detail-section { padding: 30px 0; border-bottom: 1px solid #eceef1; }
+.report-detail-section-title { display: flex; gap: 12px; align-items: baseline; }
+.report-detail-section-title span { color: #f15a20; font-size: 12px; font-weight: 800; }
+.report-detail-section-title h3 { margin: 0; font-size: 19px; }
+.report-detail-section-copy { color: #697381; font-size: 14px; line-height: 1.5; }
+.report-detail-scene { max-width: 520px; margin-top: 18px; }
+.report-detail-measurements { margin-top: 22px; border-top: 1px solid #dce1e7; }
+.report-detail-measurement-head, .report-detail-measurement { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 1.5fr) minmax(0, 1.5fr); gap: 16px; }
+.report-detail-measurement-head { padding: 12px 0; color: #697381; font-size: 12px; font-weight: 700; }
+.report-detail-measurement { padding: 18px 0; border-top: 1px solid #eceef1; }
+.report-detail-part strong, .report-detail-reading strong { display: block; font-size: 15px; }
+.report-detail-part small, .report-detail-reading small { display: block; margin-top: 6px; color: #77818d; font-size: 12px; line-height: 1.5; }
+.report-detail-reading strong { font-variant-numeric: tabular-nums; }
+.report-detail-facts, .report-detail-answers { margin: 18px 0 0; }
+.report-detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+.report-detail-facts div, .report-detail-answers div { display: flex; justify-content: space-between; gap: 18px; padding: 14px 0; border-top: 1px solid #eceef1; }
+.report-detail-facts dt, .report-detail-answers dt { color: #697381; font-size: 14px; line-height: 1.5; }
+.report-detail-facts dd, .report-detail-answers dd { margin: 0; color: #27303b; font-size: 14px; font-weight: 650; line-height: 1.5; text-align: right; }
+.report-detail-answers dd { max-width: 48%; }
+.report-detail-metadata p { color: #697381; font-size: 13px; }
+.report-detail-empty { margin: 28px 0; padding: 28px; border: 1px solid #e2e5e9; border-radius: 10px; color: #596575; }
+.report-detail-empty a, .report-detail-empty button { color: #c64611; font: inherit; font-weight: 700; }
+.report-detail-empty button { padding: 0; border: 0; background: none; cursor: pointer; }
+@media (max-width: 700px) {
+  .report-detail-back { margin: 0 0 25px; }
+  .report-detail-tabs { grid-template-columns: 1fr; }
+  .report-detail-tabs button { min-height: 70px; }
+  .report-detail-heading { display: block; }
+  .report-detail-heading p { margin-top: 10px; }
+  .report-detail-measurement-head, .report-detail-measurement { grid-template-columns: minmax(80px, .8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .report-detail-part strong, .report-detail-reading strong { font-size: 13px; }
+  .report-detail-part small, .report-detail-reading small { font-size: 11px; }
+  .report-detail-facts { grid-template-columns: 1fr; }
+  .report-detail-answers div { display: block; }
+  .report-detail-answers dd { max-width: none; margin-top: 4px; text-align: left; }
+}
