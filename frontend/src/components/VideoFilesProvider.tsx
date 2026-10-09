@@ -3,10 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredAssessments, mergeStoredPeople, postureInputRows, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredAssessment, type StoredPerson, type StoredPostureInput, type VideoNumber } from "@/lib/evaluationStore";
 import type { RebaResult } from "../../../lib/reba/types.ts";
+import { scorePostureScene } from "../../../lib/reba/score.ts";
+import { sceneFromVlm } from "../../../lib/vlm/measure.ts";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
 import { storagePathForVideo, validateVideoFile, videoBucket, videoPostureTypes, type VideoPostureType } from "@/lib/videoStorage";
 import { uploadVideo, videoDuration } from "@/lib/videoStorageClient";
+import { saveAssessmentInputs, persistAnalysisResult, restoreAnalysisResults } from "@/lib/analysisStorage";
 
 export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
@@ -42,6 +45,8 @@ function writeDemoSession(enabled: boolean): void {
 }
 
 type ContextValue = {
+  storedResults: Partial<Record<VideoNumber, unknown>>;
+  persistResult: (number: VideoNumber, result: unknown) => Promise<void>;
   dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
   files: VideoFiles; storedVideos: StoredVideos; selectedTimes: Record<VideoNumber, number | null>;
   rebaResults: Record<VideoNumber, RebaResult | null>;
@@ -81,6 +86,32 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [demoConfirmed, setDemoConfirmed] = useState<Record<VideoNumber, boolean>>({ 1: false, 2: false, 3: false });
   const [demoMode, setDemoMode] = useState(false);
   const [resultVideo, setResultVideo] = useState<VideoNumber>(1);
+  const [storedResults, setStoredResults] = useState<Partial<Record<VideoNumber, unknown>>>({});
+  const [resultVersion, setResultVersion] = useState(0);
+  const latest = useRef({ dashboard, managerId, storedVideosByPerson });
+  latest.current = { dashboard, managerId, storedVideosByPerson };
+
+  async function persistResult(number: VideoNumber, result: unknown): Promise<void> {
+    const current = latest.current;
+    const item = current.dashboard.evaluations.find((row) => row.id === current.dashboard.activeId);
+    const path = item ? current.storedVideosByPerson[item.id]?.[number]?.storage_path ?? null : null;
+    if (!item || !current.managerId || !supabase) throw new Error("평가와 로그인 상태를 확인해 주세요.");
+    const client = supabase;
+    const owner = current.managerId;
+    const version = syncVersion.current;
+    const fingerprint = JSON.stringify(postureInputRows(item, owner));
+    const next = writeQueue.current.catch(() => {}).then(async () => {
+      const fresh = latest.current.dashboard.evaluations.find((row) => row.id === item.id);
+      if (version !== syncVersion.current || !fresh || JSON.stringify(postureInputRows(fresh, owner)) !== fingerprint || latest.current.storedVideosByPerson[item.id]?.[number]?.storage_path !== path) throw new Error("입력이 변경되어 이전 결과를 저장하지 않았습니다.");
+      await saveAssessmentInputs(client, owner, item);
+      await persistAnalysisResult(client, owner, item, number, result, path);
+      lastSaved.current.set(item.assessmentId!, fingerprint);
+      const after = latest.current.dashboard.evaluations.find((row) => row.id === item.id);
+      if (version === syncVersion.current && after && latest.current.dashboard.activeId === item.id && JSON.stringify(postureInputRows(after, owner)) === fingerprint && latest.current.storedVideosByPerson[item.id]?.[number]?.storage_path === path) setStoredResults((previous) => ({ ...previous, [number]: result }));
+    });
+    writeQueue.current = next.catch(() => { setConnectionError("분석 결과를 저장하지 못했습니다. 결과 확인 후 다시 저장해 주세요."); });
+    await next;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -204,9 +235,11 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
           const rows = postureInputRows(item, managerId);
           const snapshot = JSON.stringify(rows);
           if (!item.assessmentId || lastSaved.current.get(item.assessmentId) === snapshot) continue;
-          const { error } = await client.from("assessment_posture_inputs").upsert(rows, { onConflict: "assessment_id,posture_type" });
-          if (error) throw error;
+          const current = latest.current.dashboard.evaluations.find((entry) => entry.id === item.id);
+          if (!current || JSON.stringify(postureInputRows(current, managerId)) !== snapshot) continue;
+          await saveAssessmentInputs(client, managerId, item);
           lastSaved.current.set(item.assessmentId, snapshot);
+          setResultVersion((value) => value + 1);
           const pending = readPendingSync();
           if (pending[item.assessmentId] === snapshot) {
             delete pending[item.assessmentId];
@@ -222,7 +255,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }, [dashboard, ready, canPersist, managerId, demoMode]);
 
   const activeEvaluation = dashboard.evaluations.find((item) => item.id === dashboard.activeId) ?? null;
-  const rebaResults = activeEvaluation ? resultsByPerson[activeEvaluation.id] ?? emptyResults() : emptyResults();
+  const rebaResults = activeEvaluation ? { ...emptyResults(), ...storedResults as Partial<Record<VideoNumber, RebaResult>>, ...resultsByPerson[activeEvaluation.id] } : emptyResults();
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
   const storedVideos = activeEvaluation ? storedVideosByPerson[activeEvaluation.id] ?? emptyStoredVideos() : emptyStoredVideos();
   const selectedTimes = activeEvaluation ? activeEvaluation.selectedTimes : demoTimes;
@@ -231,6 +264,27 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const skipped = activeEvaluation ? activeEvaluation.skipped : { 1: false, 2: false, 3: false };
   const activeVideos = ([1, 2, 3] as const).filter((number) => demoMode || !skipped[number]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setStoredResults({});
+    if (!activeEvaluation?.assessmentId || !supabase || !managerId || demoMode) return;
+    const snapshot = JSON.stringify(postureInputRows(activeEvaluation, managerId));
+    if (lastSaved.current.get(activeEvaluation.assessmentId) !== snapshot) return;
+    void restoreAnalysisResults(supabase, managerId, activeEvaluation).then((results) => { if (cancelled) return;
+      const checked: Partial<Record<VideoNumber, RebaResult>> = {};
+      for (const number of [1, 2, 3] as const) {
+        const result = results[number] as RebaResult | undefined;
+        if (!result?.evidence || !result.inputs) continue;
+        try {
+          const scored = scorePostureScene(sceneFromVlm(result.evidence), { scene: result.scene, fields: result.inputs });
+          if (scored.status === result.status && scored.final === result.final) checked[number] = scored;
+        } catch { /* Unsupported stored results require a new evaluation. */ }
+      }
+      setStoredResults(checked); })
+      .catch(() => { if (!cancelled) setConnectionError("저장된 결과를 불러오지 못했습니다."); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard.activeId, managerId, demoMode, resultVersion, JSON.stringify(activeEvaluation), JSON.stringify(storedVideos)]);
   const publishResult=useCallback((number:VideoNumber,result:RebaResult|null)=>{
     if(!dashboard.activeId)return;
     const id=dashboard.activeId;
@@ -238,6 +292,27 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setDashboard(current=>updateEvaluation(current,id,item=>item.selectedTimes[number]===(result?.scene.timeSec??null)&&item.confirmedScenes[number]===(result?.final!=null)?item:{...item,
       selectedTimes:{...item.selectedTimes,[number]:result?.scene.timeSec??null},confirmedScenes:{...item.confirmedScenes,[number]:result?.final!=null}}));
   },[dashboard.activeId]);
+
+  const savedResults = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (!activeEvaluation?.assessmentId || !managerId || demoMode) return;
+    const item = activeEvaluation;
+    const results = resultsByPerson[item.id];
+    if (!results) return;
+    const timer = window.setTimeout(() => {
+      for (const number of [1, 2, 3] as const) {
+        const result = results[number];
+        if (!result || item.skipped[number] || !storedVideos[number]) continue;
+        const key = `${item.assessmentId}:${number}`;
+        const fingerprint = JSON.stringify([postureInputRows(item, managerId), storedVideos[number]?.storage_path, result]);
+        if (savedResults.current.get(key) === fingerprint) continue;
+        void persistResult(number, result).then(() => savedResults.current.set(key, fingerprint)).catch(() => {});
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // Saving is debounced after publishResult has synchronized the selected scene.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEvaluation, managerId, demoMode, resultsByPerson, storedVideos]);
 
   function clearResult(number:VideoNumber){
     if(dashboard.activeId){const id=dashboard.activeId;setResultsByPerson(current=>({...current,[id]:{...(current[id]??emptyResults()),[number]:null}}));}
@@ -292,8 +367,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
         const rows = postureInputRows(item, managerId);
         const snapshot = JSON.stringify(rows);
         if (lastSaved.current.get(item.assessmentId) === snapshot) continue;
-        const { error } = await supabase.from("assessment_posture_inputs").upsert(rows, { onConflict: "assessment_id,posture_type" });
-        if (error) throw error;
+        await saveAssessmentInputs(supabase, managerId, item);
         lastSaved.current.set(item.assessmentId, snapshot);
       }
     }
@@ -457,7 +531,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     })));
   }
 
-  return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, selectedTimes, answers, rebaResults, publishResult,
+  return <VideoFilesContext.Provider value={{ storedResults, persistResult, dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, selectedTimes, answers, rebaResults, publishResult,
     confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, leaveDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }
