@@ -19,7 +19,9 @@ test("occlusion and multiple people never become valid angles", () => {
   assert.equal(result.frames[1]!.jointStatus[11], "occluded");
   assert.equal(result.frames[1]!.angles, null);
   assert.ok(result.frames[2]!.reasons.includes("multiple_people"));
-  assert.equal(result.status, "retake");
+  assert.equal(result.status, "partial");
+  assert.equal(result.frames[1]!.measurements.left.knee.value, 0);
+  assert.equal(result.frames[1]!.measurements.left.trunk.value, null);
 });
 test("invalid timeline and empty inputs", () => {
   assert.throws(() => analyzePoses([pose(), pose()], size));

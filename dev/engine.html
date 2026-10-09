@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SafeAngle 엔진 확인</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:1080px;margin:32px auto;padding:0 20px;color:#18212c;background:#f4f6f8}h1{font-size:28px}button,input,select{font:inherit}button{padding:8px 16px}label{display:inline-block;margin:8px 12px 8px 0}.viewer{position:relative;width:min(100%,640px);background:#16202a}video{display:block;width:100%;height:auto}canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#timeline{width:min(100%,640px)}pre{white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid #ccd3dc}#status{min-height:24px}progress{width:240px}button:disabled{opacity:.5}
+</style>
+<h1>SafeAngle 엔진 확인</h1>
+<p>작업 영상의 관절·각도와 측정 불가 이유를 확인합니다. 점수 계산은 포함하지 않습니다.</p>
+<label>영상 <input id="file" type="file" accept="video/*"></label>
+<label>방향 <select id="facing"><option value="auto">자동</option><option value="1">화면 오른쪽</option><option value="-1">화면 왼쪽</option></select></label>
+<button id="analyze" disabled>분석</button> <button id="cancel" disabled>취소</button>
+<p id="status" role="status" aria-live="polite">영상을 선택하십시오.</p>
+<p>뼈대: 초록 점·실선은 관찰 가능한 좌표, 주황 빈 점·점선은 불확실하거나 확인이 필요한 좌표입니다.</p>
+<progress id="progress" max="1" value="0" aria-label="분석 진행률"></progress>
+<p>취소는 현재 장면의 추론이 끝난 뒤 적용됩니다. 초록 표시도 실제 관절 위치의 정확도를 보장하지 않습니다.</p>
+<div class="viewer"><video id="video" controls playsinline></video><canvas id="overlay" aria-label="관절 뼈대"></canvas></div>
+<label for="timeline">분석 장면 <span id="time">0초</span></label><br>
+<input id="timeline" type="range" min="0" max="0" value="0" disabled>
+<pre id="summary"></pre>
+<table><thead><tr><th>측정값</th><th>각도</th><th>상태와 근거</th></tr></thead><tbody id="measurements"></tbody></table>
+<details><summary>33개 관절 데이터</summary><pre id="joints"></pre></details>
+<script type="importmap">{"imports":{"@mediapipe/tasks-vision":"/vendor/vision_bundle.mjs"}}</script>
+<script type="module" src="/build/dev/engine.js"></script>
+</html>
