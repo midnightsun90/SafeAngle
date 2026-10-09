@@ -28,12 +28,13 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
   const analysisCache = useRef(new Map<string, VideoAnalysis>());
 
   const assessmentId = activeEvaluation?.assessmentId ?? null;
+  const ownerId = activeEvaluation?.managerId ?? null;
   const paths = ([1, 2, 3] as const).map((number) => skipped[number] ? "" : storedVideos[number]?.storage_path ?? "");
-  const pathSignature = `${assessmentId ?? ""}|${paths.join("|")}`;
+  const pathSignature = `${assessmentId ?? ""}|${ownerId ?? ""}|${paths.join("|")}`;
 
   useEffect(() => {
     const currentAssessmentId = assessmentId;
-    if (!currentAssessmentId || demoMode || !supabase) return;
+    if (!currentAssessmentId || !ownerId || demoMode || !supabase) return;
     const client = supabase;
     const controller = new AbortController();
     let active = true;
@@ -44,7 +45,8 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
     async function run() {
       const { data: userData, error: authError } = await client.auth.getUser();
       if (authError || !userData.user || !active) return;
-      const managerId = userData.user.id;
+      const managerId = ownerId;
+      if (!managerId) return;
       const { data: storedRows } = await client.from("assessment_pose_results")
         .select("assessment_id,posture_type,storage_path,time_seconds,selection_source,model_version,analyzed_at,measurements,quality")
         .eq("assessment_id", currentAssessmentId).eq("manager_id", managerId);
@@ -108,7 +110,7 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
   }, [pathSignature, demoMode, retryRequest?.id]);
 
   async function selectFrame(number: VideoNumber, timeSec: number) {
-    if (!assessmentId || !supabase) throw new Error("평가를 먼저 선택해 주세요.");
+    if (!assessmentId || !ownerId || !supabase) throw new Error("평가를 먼저 선택해 주세요.");
     const path = storedVideos[number]?.storage_path;
     const analysis = path ? analysisCache.current.get(path) : null;
     if (!analysis || !path) throw new Error("영상 전체 분석을 다시 실행한 뒤 장면을 선택해 주세요.");
@@ -118,7 +120,7 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
     if (authError || !userData.user) throw new Error("로그인을 확인하지 못했습니다.");
     const result = toPoseResult(analysis, frame, assessmentId, videoPostureTypes[number - 1], path, "manual");
     const { error } = await supabase.from("assessment_pose_results")
-      .upsert(poseResultRow(result, userData.user.id), { onConflict: "assessment_id,posture_type" });
+      .upsert(poseResultRow(result, ownerId), { onConflict: "assessment_id,posture_type" });
     if (error) throw error;
     setResults((current) => ({ ...current, [number]: result }));
   }
