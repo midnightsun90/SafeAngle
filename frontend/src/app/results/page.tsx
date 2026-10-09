@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import EvaluationShell from "@/components/EvaluationShell";
 import ScenePreview from "@/components/ScenePreview";
@@ -8,18 +7,9 @@ import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider
 import { formatVideoTime } from "@/lib/video";
 import { sampleResults, videoTitles } from "@/lib/resultData";
 
-type WorkContext = { company: string; worksite: string; task: string };
-
 export default function ResultsPage() {
-  const { demoMode, files, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
-  const [work, setWork] = useState<WorkContext | null>(null);
-
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("safeangle.recentWorkContexts") ?? "[]");
-      if (Array.isArray(saved) && saved[0] && typeof saved[0].company === "string" && typeof saved[0].worksite === "string" && typeof saved[0].task === "string") setWork(saved[0]);
-    } catch { /* Work information is optional on this page. */ }
-  }, []);
+  const { demoMode, activeEvaluation, files, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
+  const work = activeEvaluation?.work;
 
   const numbers: VideoNumber[] = activeVideos;
   const sample = sampleResults[resultVideo];

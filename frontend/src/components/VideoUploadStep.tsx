@@ -10,7 +10,7 @@ import { filmingNotice, uploadCopy } from "@/lib/uploadCopy";
 
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   const router = useRouter();
-  const { files, setFile, skipVideo } = useVideoFiles();
+  const { files, selectedTimes, activeEvaluation, skipped, setFile, skipVideo } = useVideoFiles();
   const selectedFile = files[number];
   const config = uploadCopy[number];
   const [duration, setDuration] = useState<string | null>(null);
@@ -70,6 +70,13 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
       return;
     }
 
+    if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/") && activeEvaluation.lastPath !== "/evaluation") {
+      const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index]));
+      const readyToResume = activeEvaluation.lastPath.startsWith("/questions/")
+        ? selectedTimes[Number(activeEvaluation.lastPath.split("/")[2]) as VideoNumber] !== null
+        : activeEvaluation.lastPath === "/review" || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
+      if (allFilesReady && readyToResume) { router.push(activeEvaluation.lastPath); return; }
+    }
     router.push(config.nextPath);
   }
 
