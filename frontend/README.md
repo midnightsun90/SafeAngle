@@ -14,7 +14,11 @@ http://localhost:3000
 
 실제 분석은 루트 `.env.local`에 서버 API 키를 설정한 뒤 별도 터미널에서 `npm run vision:dev`를 실행한다. 제품 `/analysis`는 대표 장면을 GPT로 보내 관절을 제안받고 사람이 좌표를 확인한 뒤 공유 엔진으로 각도·REBA를 계산한다. 자세한 계약·오류·배포 환경은 [GPT 연결 안내](../docs/VLM_TRANSITION.md)에 있다. 원본 영상은 비공개 저장소에 보관하고 OpenAI에는 동의한 대표 장면 한 장만 보낸다. 좌표·대표 이미지·새 REBA 결과는 탭 메모리에만 두며 기존 DB에 넣지 않는다.
 
-## GitHub Pages
+## 평가서 PDF 저장
+
+대표 장면 평가 화면의 **상세 평가서 / PDF 저장** 링크를 열고 **인쇄 / PDF 저장** 버튼을 누른다. 브라우저 인쇄 창에서 대상을 **PDF로 저장**으로 선택한다. A4 평가서에 현재 점수·관절 근거·계산표를 담으며, DB에서 복원한 평가서의 선택 장면도 정지 이미지로 캡처한다. 추가 GPT 호출은 하지 않는다. 미확정·예시 결과 표시는 그대로 유지한다.
+
+## GitHub Pages 배포
 
 `main`의 `frontend/` 또는 배포 워크플로가 변경되면 `.github/workflows/deploy-frontend.yml`에서 정적 사이트를 빌드해 배포한다. GitHub 저장소의 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정해야 한다.
 

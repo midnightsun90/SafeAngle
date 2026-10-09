@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import EvaluationShell from "@/components/EvaluationShell";
 import ScenePreview from "@/components/ScenePreview";
 import { useVideoFiles } from "@/components/VideoFilesProvider";
@@ -9,6 +10,8 @@ import { sampleResults, sampleRows, videoTitles } from "@/lib/resultData";
 import { tableA, tableB, tableC } from "@/lib/rebaTables";
 import type { AnswerName } from "../../../../lib/reba/types.ts";
 import type { PartName } from "../../../../lib/types.ts";
+import { captureFrame } from "@/lib/captureFrame";
+import "./print.css";
 
 function ReferenceTable({ title, description, data, rowLabel, columnLabels, groupSize, groupLabels, highlight }: {
   title: string;
@@ -47,9 +50,29 @@ function ReferenceTable({ title, description, data, rowLabel, columnLabels, grou
 }
 
 export default function ReportPage() {
-  const { demoMode, confirmedScenes, resultVideo, selectedTimes, rebaResults } = useVideoFiles();
+  const { demoMode, confirmedScenes, resultVideo, selectedTimes, rebaResults, activeEvaluation, dashboard } = useVideoFiles();
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState("");
+  const [printFrame, setPrintFrame] = useState<{key:string;image:string}|null>(null);
   const sampleDetails = demoMode && confirmedScenes[resultVideo] && resultVideo === 1;
   const real=demoMode?null:rebaResults[resultVideo];
+  const frameKey=real?`${real.scene.videoId}:${real.scene.timeSec}:${real.scene.side}`:"";
+  async function printReport(){
+    setPrinting(true);setPrintError("");
+    try{
+      if(real?.evidence&&!real.evidence.imageDataUrl){
+        const video=document.querySelector<HTMLVideoElement>("main .scene-preview video");
+        if(!video)throw new Error("영상을 불러온 뒤 다시 저장하십시오.");
+        const frame=await captureFrame(video,real.scene.timeSec,AbortSignal.timeout(7000));
+        setPrintFrame({key:frameKey,image:frame.imageDataUrl});
+      }
+      await document.fonts.ready;
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+      await Promise.all(Array.from(document.querySelectorAll<HTMLImageElement>("main img"),image=>image.decode()));
+      window.print();
+    }catch(error){setPrintError(error instanceof Error?error.message:"평가서를 준비하지 못했습니다. 다시 시도하십시오.");}
+    finally{setPrinting(false);}
+  }
   const time = demoMode ? sampleResults[resultVideo].time : selectedTimes[resultVideo] !== null ? formatVideoTime(selectedTimes[resultVideo] ?? 0) : "미선택";
   const answer = (key: AnswerName) => {
     const field=real?.inputs[key];
@@ -77,8 +100,11 @@ export default function ReportPage() {
   return (
     <EvaluationShell step="07" stepName="상세 평가서" title="REBA 상세 평가서" wide introFull beforeIntro={<div className="report-topline">
         <Link className="confirmation-soft-button" href="/results">← 결과 요약으로</Link>
+        <button type="button" className="sa-button" disabled={printing} onClick={()=>void printReport()}>{printing?"평가서 준비 중…":"인쇄 / PDF 저장"}</button>
         {demoMode && <span className="sample-badge">시안용 예시</span>}
       </div>}>
+      {printError&&<p className="report-print-error" role="alert">{printError}</p>}
+      <p className="report-print-only">SafeAngle · 평가 대상자: {demoMode?"시안용 예시":activeEvaluation?.name??"미선택"} · 평가자: {dashboard.evaluatorName||"미입력"}</p>
       <div className="report-heading">
         <p>영상 {resultVideo} · {videoTitles[resultVideo]} · 선택 장면 {time || "미선택"}{!demoMode && ` · ${real?real.scene.side==="left"?"왼쪽":"오른쪽":"쪽 미선택"}`}</p>
         <div className="report-metrics">
@@ -92,7 +118,10 @@ export default function ReportPage() {
 
       {real?.evidence&&<section className="report-table-section" aria-label="GPT 관절 근거"><h2>대표 장면과 관절 확인 기록</h2>
         <p>{real.evidence.provenance.model} · {real.evidence.provenance.promptVersion} · {real.scene.timeSec.toFixed(2)}초 · {real.scene.side==="left"?"왼쪽":"오른쪽"}. 좌표는 이미지의 왼쪽 위를 기준으로 한 비율이며, 각도는 확인 후 코드로 계산했습니다.</p>
-        {real.evidence.imageDataUrl ? <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/> : <ScenePreview number={resultVideo} />}
+        {real.evidence.imageDataUrl ? <img src={real.evidence.imageDataUrl} alt="평가에 사용한 실제 대표 장면" style={{width:"min(100%, 560px)",height:"auto"}}/> : <>
+          <div className="report-screen-frame"><ScenePreview number={resultVideo} /></div>
+          {printFrame?.key===frameKey?<img className="report-print-only" src={printFrame.image} alt="평가에 사용한 대표 장면"/>:<p className="report-print-only">대표 장면을 포함하려면 화면의 ‘인쇄 / PDF 저장’ 버튼을 사용하십시오.</p>}
+        </>}
         <div className="report-table-scroll"><table className="report-item-table"><thead><tr><th>관절</th><th>GPT 원 제안 (x, y)</th><th>사람 확인·수정 (x, y)</th></tr></thead><tbody>{Object.entries(real.evidence.reviewedPoints).map(([name,p])=>{const before=real.evidence!.originalPoints[name as keyof typeof real.evidence.originalPoints];const format=(point:typeof p)=>point?`${point.x.toFixed(4)}, ${point.y.toFixed(4)}`:"관측 불가";return <tr key={name}><th>{name}</th><td>{format(before)}</td><td>{format(p)}</td></tr>;})}</tbody></table></div>
       </section>}
 
