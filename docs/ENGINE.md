@@ -1,5 +1,7 @@
 # 관절 추적·자세 측정 엔진
 
+제품 프론트엔드와 REBA 연결은 [REBA.md](REBA.md), 정적 웹 실제 실행 증거는 [REBA_VERIFICATION.md](REBA_VERIFICATION.md)를 확인한다. 아래의 엔진 단독 실행 기록과 계약은 보존한다. 자산 준비는 현재 root와 `frontend/public` 모두에 수행하고, 정적 배포에서는 `analyzeVideo(file, {assetBasePath: "/SafeAngle"})`로 서비스 경로를 전달한다.
+
 2026-10-09: MediaPipe Pose Landmarker **Full v1**, `@mediapipe/tasks-vision` **0.10.34**로 영상 분석부터 양쪽 부위 측정·오버레이까지 구현했다. Chrome에서 실제 모델 실행과 실패·취소·복구를 확인했다. **사람이 독립적으로 표시한 기준 좌표가 없어 정확도는 미검증**이다. 실행 증거와 실패 사례는 [ENGINE_VERIFICATION.md](ENGINE_VERIFICATION.md)에 있다.
 
 이 세션은 자세 측정을 맡는다. REBA 채점·법령 기준표·제품 프론트엔드는 임서현·한다현 담당이다. 엔진은 점수나 법적 해당 여부를 계산하지 않는다. 기존 Codex MVP를 확장했고 다른 도구의 이전 시제품 코드는 가져오지 않았다.

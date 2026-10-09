@@ -12,7 +12,10 @@
     "prepare:pose": "node scripts/prepare-pose.mjs",
     "engine:dev": "node scripts/dev-engine.mjs",
     "prepare:fixtures": "node scripts/prepare-fixtures.mjs",
-    "engine:verify": "node scripts/verify-browser.cjs"
+    "engine:verify": "node scripts/verify-browser.cjs",
+    "reba:verify": "node scripts/verify-reba-browser.cjs",
+    "vision:dev": "node --experimental-strip-types server/start.ts",
+    "vision:verify": "node --experimental-strip-types scripts/verify-vlm-browser.cjs"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

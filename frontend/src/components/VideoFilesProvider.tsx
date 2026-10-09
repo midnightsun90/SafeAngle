@@ -1,7 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredAssessments, mergeStoredPeople, postureInputRows, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredAssessment, type StoredPerson, type StoredPostureInput, type VideoNumber } from "@/lib/evaluationStore";
+import type { RebaResult } from "../../../lib/reba/types.ts";
+import { scorePostureScene } from "../../../lib/reba/score.ts";
+import { sceneFromVlm } from "../../../lib/vlm/measure.ts";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
 import { storagePathForVideo, validateVideoFile, videoBucket, videoPostureTypes, type VideoPostureType } from "@/lib/videoStorage";
@@ -16,6 +19,7 @@ const emptyFiles = (): VideoFiles => ({ 1: null, 2: null, 3: null });
 const emptyStoredVideos = (): StoredVideos => ({ 1: null, 2: null, 3: null });
 const emptyAnswers = (): Record<VideoNumber, Record<string, string>> => ({ 1: {}, 2: {}, 3: {} });
 const emptyTimes = (): Record<VideoNumber, number | null> => ({ 1: null, 2: null, 3: null });
+const emptyResults = (): Record<VideoNumber, RebaResult | null> => ({ 1: null, 2: null, 3: null });
 const demoStorageKey = "safeangle-preview-demo";
 export const previewRealKey = "safeangle-preview-real";
 const pendingSyncKey = "safeangle.pending-inputs.v1";
@@ -45,6 +49,8 @@ type ContextValue = {
   persistResult: (number: VideoNumber, result: unknown) => Promise<void>;
   dashboard: DashboardState; ready: boolean; storageError: boolean; connectionError: string; activeEvaluation: Evaluation | null;
   files: VideoFiles; storedVideos: StoredVideos; selectedTimes: Record<VideoNumber, number | null>;
+  rebaResults: Record<VideoNumber, RebaResult | null>;
+  publishResult: (number: VideoNumber, result: RebaResult | null) => void;
   answers: Record<VideoNumber, Record<string, string>>; skipped: Record<VideoNumber, boolean>;
   activeVideos: VideoNumber[]; demoMode: boolean; resultVideo: VideoNumber;
   confirmedScenes: Record<VideoNumber, boolean>;
@@ -72,6 +78,8 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const lastSaved = useRef(new Map<string, string>());
   const syncVersion = useRef(0);
   const [filesByPerson, setFilesByPerson] = useState<Record<string, VideoFiles>>({});
+  // Pose evidence stays in this tab; never persist images or coordinates to the dashboard DB.
+  const [resultsByPerson, setResultsByPerson] = useState<Record<string, Record<VideoNumber, RebaResult | null>>>({});
   const [storedVideosByPerson, setStoredVideosByPerson] = useState<Record<string, StoredVideos>>({});
   const [demoAnswers, setDemoAnswers] = useState(emptyAnswers);
   const [demoTimes, setDemoTimes] = useState(emptyTimes);
@@ -247,6 +255,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }, [dashboard, ready, canPersist, managerId, demoMode]);
 
   const activeEvaluation = dashboard.evaluations.find((item) => item.id === dashboard.activeId) ?? null;
+  const rebaResults = activeEvaluation ? { ...emptyResults(), ...storedResults as Partial<Record<VideoNumber, RebaResult>>, ...resultsByPerson[activeEvaluation.id] } : emptyResults();
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
   const storedVideos = activeEvaluation ? storedVideosByPerson[activeEvaluation.id] ?? emptyStoredVideos() : emptyStoredVideos();
   const selectedTimes = activeEvaluation ? activeEvaluation.selectedTimes : demoTimes;
@@ -261,11 +270,53 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     if (!activeEvaluation?.assessmentId || !supabase || !managerId || demoMode) return;
     const snapshot = JSON.stringify(postureInputRows(activeEvaluation, managerId));
     if (lastSaved.current.get(activeEvaluation.assessmentId) !== snapshot) return;
-    void restoreAnalysisResults(supabase, managerId, activeEvaluation).then((results) => { if (!cancelled) setStoredResults(results); })
+    void restoreAnalysisResults(supabase, managerId, activeEvaluation).then((results) => { if (cancelled) return;
+      const checked: Partial<Record<VideoNumber, RebaResult>> = {};
+      for (const number of [1, 2, 3] as const) {
+        const result = results[number] as RebaResult | undefined;
+        if (!result?.evidence || !result.inputs) continue;
+        try {
+          const scored = scorePostureScene(sceneFromVlm(result.evidence), { scene: result.scene, fields: result.inputs });
+          if (scored.status === result.status && scored.final === result.final) checked[number] = scored;
+        } catch { /* Unsupported stored results require a new evaluation. */ }
+      }
+      setStoredResults(checked); })
       .catch(() => { if (!cancelled) setConnectionError("저장된 결과를 불러오지 못했습니다."); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard.activeId, managerId, demoMode, resultVersion, JSON.stringify(activeEvaluation), JSON.stringify(storedVideos)]);
+  const publishResult=useCallback((number:VideoNumber,result:RebaResult|null)=>{
+    if(!dashboard.activeId)return;
+    const id=dashboard.activeId;
+    setResultsByPerson(current=>current[id]?.[number]===result?current:{...current,[id]:{...(current[id]??emptyResults()),[number]:result}});
+    setDashboard(current=>updateEvaluation(current,id,item=>item.selectedTimes[number]===(result?.scene.timeSec??null)&&item.confirmedScenes[number]===(result?.final!=null)?item:{...item,
+      selectedTimes:{...item.selectedTimes,[number]:result?.scene.timeSec??null},confirmedScenes:{...item.confirmedScenes,[number]:result?.final!=null}}));
+  },[dashboard.activeId]);
+
+  const savedResults = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (!activeEvaluation?.assessmentId || !managerId || demoMode) return;
+    const item = activeEvaluation;
+    const results = resultsByPerson[item.id];
+    if (!results) return;
+    const timer = window.setTimeout(() => {
+      for (const number of [1, 2, 3] as const) {
+        const result = results[number];
+        if (!result || item.skipped[number] || !storedVideos[number]) continue;
+        const key = `${item.assessmentId}:${number}`;
+        const fingerprint = JSON.stringify([postureInputRows(item, managerId), storedVideos[number]?.storage_path, result]);
+        if (savedResults.current.get(key) === fingerprint) continue;
+        void persistResult(number, result).then(() => savedResults.current.set(key, fingerprint)).catch(() => {});
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // Saving is debounced after publishResult has synchronized the selected scene.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEvaluation, managerId, demoMode, resultsByPerson, storedVideos]);
+
+  function clearResult(number:VideoNumber){
+    if(dashboard.activeId){const id=dashboard.activeId;setResultsByPerson(current=>({...current,[id]:{...(current[id]??emptyResults()),[number]:null}}));}
+  }
 
   async function setEvaluatorName(name: string) {
     const trimmed = name.trim();
@@ -329,6 +380,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setManagerId(null);
     lastSaved.current.clear();
     setFilesByPerson({});
+    setResultsByPerson({});
     setStoredVideosByPerson({});
     setDemoAnswers(emptyAnswers());
     setDemoTimes(emptyTimes());
@@ -388,6 +440,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
       ...(current[id] ?? emptyStoredVideos()),
       [number]: { storage_path: path, original_filename: file.name, duration_seconds: duration },
     } }));
+    clearResult(number);
     setFilesByPerson((current) => ({ ...current, [id]: { ...(current[id] ?? emptyFiles()), [number]: file } }));
     setDashboard((current) => updateEvaluation(current, id, (item) => {
       const sameFile = item.fileKeys[number] === fileIdentity(file);
@@ -412,6 +465,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
     }
     setStoredVideosByPerson((current) => ({ ...current, [id]: { ...(current[id] ?? emptyStoredVideos()), [number]: null } }));
+    clearResult(number);
     setFilesByPerson((current) => ({ ...current, [id]: { ...(current[id] ?? emptyFiles()), [number]: null } }));
     setDashboard((current) => updateEvaluation(current, id, (item) => ({ ...item,
       skipped: { ...item.skipped, [number]: true },
@@ -425,6 +479,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }
 
   function setSelectedTime(number: VideoNumber, time: number) {
+    if(selectedTimes[number]!==time)clearResult(number);
     if (!dashboard.activeId) {
       setDemoTimes((current) => ({ ...current, [number]: time }));
       if (demoTimes[number] !== time) {
@@ -442,6 +497,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }
 
   function setAnswer(number: VideoNumber, key: string, value: string) {
+    clearResult(number);
     if (!dashboard.activeId) {
       setDemoAnswers((current) => ({ ...current, [number]: { ...current[number], [key]: value } }));
       setDemoConfirmed((current) => ({ ...current, [number]: false }));
@@ -475,7 +531,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     })));
   }
 
-  return <VideoFilesContext.Provider value={{ storedResults, persistResult, dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, selectedTimes, answers,
+  return <VideoFilesContext.Provider value={{ storedResults, persistResult, dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, selectedTimes, answers, rebaResults, publishResult,
     confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, leaveDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }

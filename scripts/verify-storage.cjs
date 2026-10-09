@@ -12,14 +12,42 @@ async function main() {
   const url = source.match(/https:\/\/[a-z]+\.supabase\.co/)?.[0];
   const key = source.match(/sb_publishable_[A-Za-z0-9_-]+/)?.[0];
   assert(url && key, 'Public client configuration required; never use service keys here');
+  const mockAnalysis = process.env.VERIFY_ANALYSIS_MOCK === '1';
+  const analysisRows = new Map();
+  async function analysisResponse(request) {
+    const u = new URL(request.url);
+    const id = u.searchParams.get('id')?.replace(/^eq\./, '');
+    if (request.method === 'POST') {
+      const row = await request.json();
+      analysisRows.set(row.id, row);
+    } else if (request.method === 'PATCH') {
+      const patch = await request.json();
+      if (analysisRows.has(id)) analysisRows.set(id, { ...analysisRows.get(id), ...patch });
+    } else if (request.method === 'DELETE') {
+      analysisRows.clear();
+    }
+    let rows = [...analysisRows.values()].filter(row => !id || row.id === id);
+    if (request.method === 'POST') rows = [rows.at(-1)];
+    const body = request.headers.get('Accept')?.includes('vnd.pgrst.object') ? rows[0] ?? null : rows;
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  const verificationFetch = (input, options) => {
+    const request = new Request(input, options);
+    return mockAnalysis && request.url.includes('/rest/v1/assessment_analysis_results') ? analysisResponse(request) : fetch(request);
+  };
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
+  if (mockAnalysis) await page.route('**/rest/v1/assessment_analysis_results*', async route => {
+    const r = route.request();
+    const response = await analysisResponse(new Request(r.url(), { method: r.method(), headers: r.headers(), body: ['GET','HEAD'].includes(r.method()) ? undefined : r.postData() }));
+    await route.fulfill({ status: response.status, body: await response.text(), contentType: 'application/json' });
+  });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   let db, manager;
   const outsider = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const summary = { checks: [], errors, cleanup: false };
+  const summary = { checks: [], errors, cleanup: false, analysisStorage: mockAnalysis ? 'intercepted, migration not applied' : 'actual Supabase' };
   const fixture = path.resolve('../SafeAngle-engine/.local/fixtures/short.webm');
   try {
     await page.goto(process.env.VERIFY_STORAGE_URL ?? 'http://127.0.0.1:3198/', { waitUntil: 'networkidle' });
@@ -31,7 +59,7 @@ async function main() {
       return name ? JSON.parse(localStorage.getItem(name)) : null;
     });
     assert(session?.access_token && session?.refresh_token, 'Owned verification session missing');
-    db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    db = createClient(url, key, { global: { fetch: verificationFetch }, auth: { persistSession: false, autoRefreshToken: false } });
     const connected = await db.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
     assert(!connected.error); manager = connected.data.user.id;
     await page.locator('.sidebar-add').click();
@@ -88,10 +116,10 @@ async function main() {
     const selected = await db.from('assessment_posture_inputs').select('selected_time_seconds,answers').eq('assessment_id', item.assessmentId).eq('posture_type', 'lift_transfer').single();
     assert.equal(Number(selected.data.selected_time_seconds), 2);
     assert.equal(selected.data.answers.repeated, 'unknown');
-    const parts = Object.fromEntries(['trunk','neck','legs','upperArm','lowerArm','wrist'].map((key) => [key, { score: 1, source: 'human' }]));
+    const parts = Object.fromEntries(['trunk','neck','knee','upperArm','lowerArm','wrist'].map((key) => [key, { score: 1, source: 'human' }]));
     const fixtureResult = { status: 'pending', final: null, scene: { videoId: 'storage-verification-fixture', frameIndex: 10, timeSec: 2, side: 'left' }, parts, verificationOnly: true };
     await storage.persistAnalysisResult(db, manager, item, 1, fixtureResult, storagePath);
-    let assessment = await db.from('assessments').select('result,reba_score,status').eq('id', item.assessmentId).single();
+    let assessment = await db.from('assessment_analysis_results').select('result,reba_score,status').eq('id', item.assessmentId).single();
     assert(!assessment.error); assert.equal(assessment.data.reba_score, null); assert.equal(assessment.data.status, 'needs_review');
     assert.equal((await storage.restoreAnalysisResults(db, manager, item))[1].scene.timeSec, 2);
     await assert.rejects(storage.persistAnalysisResult(db, manager, item, 1, { ...fixtureResult, final: 0 }, storagePath));
@@ -101,21 +129,57 @@ async function main() {
     item.answers[1].repeated = 'no';
     await storage.saveAssessmentInputs(db, manager, item);
     await storage.persistAnalysisResult(db, manager, item, 1, { ...fixtureResult, status: 'complete', final: 1 }, storagePath);
-    assessment = await db.from('assessments').select('reba_score,status').eq('id', item.assessmentId).single();
+    assessment = await db.from('assessment_analysis_results').select('reba_score,status').eq('id', item.assessmentId).single();
     assert(!assessment.error); assert.equal(assessment.data.reba_score, 1); assert.equal(assessment.data.status, 'completed');
     await storage.saveAssessmentInputs(db, manager, item);
-    assessment = await db.from('assessments').select('reba_score').eq('id', item.assessmentId).single();
+    assessment = await db.from('assessment_analysis_results').select('reba_score').eq('id', item.assessmentId).single();
     assert.equal(assessment.data.reba_score, 1, 'unchanged JSONB answers must preserve score');
     item.answers[1].repeated = 'yes';
     await storage.saveAssessmentInputs(db, manager, item);
-    assessment = await db.from('assessments').select('result,reba_score').eq('id', item.assessmentId).single();
+    assessment = await db.from('assessment_analysis_results').select('result,reba_score').eq('id', item.assessmentId).single();
     assert.equal(assessment.data.result, null); assert.equal(assessment.data.reba_score, null);
     const files = await import(pathToFileURL(path.resolve('frontend/src/lib/videoStorage.ts')).href);
     assert(files.validateVideoFile(new File([], 'empty.webm', { type: 'video/webm' })));
     assert(files.validateVideoFile({ name: 'big.webm', type: 'video/webm', size: files.MAX_VIDEO_BYTES + 1 }));
     summary.checks.push('selected time restored, pending stays null, result fixtures round trip, stale result rejected, input edits invalidate score, empty/oversize rejected');
+    const cached = JSON.parse(await fs.readFile('../SafeAngle-engine/.local/vlm-verification/api-results.json', 'utf8')).repeats[0];
+    await page.route('http://127.0.0.1:3212/api/vision', route => {
+      const request = route.request().postDataJSON();
+      return route.fulfill({ json: { ...cached, requestId: request.requestId, capture: request.capture } });
+    });
+    await page.locator('.question-form [type="submit"]').click();
+    await page.locator('#evaluation-timeline').waitFor();
+    await page.waitForFunction(() => Number(document.querySelector('#evaluation-timeline')?.max) > 0);
+    await page.locator('#evaluation-timeline').fill('0.5');
+    await page.locator('#evaluation-side').selectOption('left');
+    await page.locator('#evaluation-facing').selectOption('-1');
+    await page.getByLabel(/한 사람의 측면 장면/).check();
+    await page.getByLabel(/선택한 장면 한 장을 OpenAI/).check();
+    await page.getByRole('button', { name: 'GPT 관절 분석', exact: true }).click();
+    await page.getByLabel(/선택한 사람·쪽의 관절/).check();
+    await page.getByRole('button', { name: '관절 확인 완료, 작업 조건 입력', exact: true }).click();
+    for (const name of ['neckTwist','neckSideBend','trunkTwist','trunkSideBend','unstable','armAbducted','shoulderRaised','armSupported','wristDeviated','wristTwisted','shock','repetitionIsWalking','rapidChange']) await page.locator(`[data-video-active="true"] [name="${name}"]`).selectOption('false');
+    for (const [name, value] of [['neckBase','1'],['wristBase','1'],['trunkUpright','false'],['legs','bilateral'],['coupling','good']]) await page.locator(`[data-video-active="true"] [name="${name}"]`).selectOption(value);
+    for (const name of ['loadKg','staticMinutes','repeatsPerMinute']) await page.locator(`[data-video-active="true"] [name="${name}"]`).fill('0');
+    for (const [name,value] of [['trunkBase','2'],['kneeExtra','0'],['upperArmBase','2'],['lowerArmBase','1']]) if (await page.locator(`[name="${name}"]`).count()) await page.locator(`[name="${name}"]`).selectOption(value);
+    await page.waitForFunction(() => Number(document.querySelector('#reba-final')?.getAttribute('data-score')) >= 1);
+    const actualScore = Number(await page.locator('#reba-final').getAttribute('data-score'));
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const row = await db.from('assessment_analysis_results').select('result,reba_score,status').eq('id', item.assessmentId).single();
+      if (row.data?.reba_score === actualScore && row.data.result?.videos?.[1]?.result?.status === 'complete') {
+        assert.equal(row.data.result.videos[1].result.evidence.imageDataUrl, '');
+        break;
+      }
+      assert(attempt < 99, 'UI did not persist completed VLM result');
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    await page.goto('http://127.0.0.1:3198/results/', { waitUntil: 'networkidle' });
+    await page.waitForFunction(score => document.querySelector('#summary-final')?.textContent === `${score}점`, actualScore);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForFunction(score => document.querySelector('#summary-final')?.textContent === `${score}점`, actualScore);
+    summary.checks.push('cached VLM proposal -> human confirmation -> REBA -> analysis storage automatic save -> summary survives reload, frame JPEG omitted');
     await page.evaluate(() => document.fonts.ready);
-    const font = await page.evaluate(() => ({ body: getComputedStyle(document.body).fontFamily, input: getComputedStyle(document.querySelector('input')).fontFamily, loaded: [...document.fonts].some((x) => /pretendard/i.test(x.family) && x.status === 'loaded') }));
+    const font = await page.evaluate(() => ({ body: getComputedStyle(document.body).fontFamily, input: getComputedStyle(document.querySelector('input, button')).fontFamily, loaded: [...document.fonts].some((x) => /pretendard/i.test(x.family) && x.status === 'loaded') }));
     assert.match(font.body, /pretendard/i); assert.equal(font.body, font.input); assert(font.loaded);
     summary.font = font;
     await page.setViewportSize({ width: 390, height: 844 });
@@ -142,7 +206,7 @@ async function main() {
       const paths = (rows.data ?? []).map((x) => x.storage_path);
       assert(paths.every((x) => x.startsWith(`${manager}/`)));
       if (paths.length) { const removed = await db.storage.from('assessment-videos').remove(paths); assert(!removed.error); }
-      for (const table of ['assessment_videos', 'assessment_posture_inputs', 'assessments', 'people']) {
+      for (const table of ['assessment_analysis_results', 'assessment_videos', 'assessment_posture_inputs', 'assessments', 'people']) {
         const removed = await db.from(table).delete().eq('manager_id', manager); assert(!removed.error, table);
       }
       const removed = await db.from('managers').delete().eq('id', manager); assert(!removed.error);
