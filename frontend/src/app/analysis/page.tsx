@@ -7,14 +7,14 @@ import { useVideoFiles } from "@/components/VideoFilesProvider";
 import { allQuestionKeys } from "@/lib/questions";
 
 const stages = [
-  { title: "영상 장면 확인", description: "선택한 장면과 영상 3개를 확인합니다." },
+  { title: "영상 장면 확인", description: "올린 영상과 선택한 장면을 확인합니다." },
   { title: "자세 각도 측정", description: "목·몸통·다리·팔의 각도를 영상에서 측정합니다." },
   { title: "사람 답변 반영", description: "Q1~Q4의 자세·힘·손잡이·활동 답변을 장면별로 적용합니다." },
   { title: "장면별 결과 계산", description: "확인된 값만으로 각 장면의 평가 결과를 계산합니다." },
 ];
 
 export default function AnalysisPage() {
-  const { files, selectedTimes, answers, demoMode } = useVideoFiles();
+  const { files, selectedTimes, answers, demoMode, activeVideos } = useVideoFiles();
   const [demoProgress, setDemoProgress] = useState(0);
   const [demoRunning, setDemoRunning] = useState(true);
 
@@ -24,9 +24,9 @@ export default function AnalysisPage() {
     return () => window.clearTimeout(timer);
   }, [demoMode, demoRunning, demoProgress]);
 
-  const missingScenes = ([1, 2, 3] as const).filter((number) => !files[number] || selectedTimes[number] === null);
-  const missingAnswers = ([1, 2, 3] as const).filter((number) => allQuestionKeys.some((key) => !answers[number][key]));
-  const unknownAnswers = ([1, 2, 3] as const).filter((number) => allQuestionKeys.some((key) => answers[number][key] === "unknown"));
+  const missingScenes = activeVideos.filter((number) => !files[number] || selectedTimes[number] === null);
+  const missingAnswers = activeVideos.filter((number) => allQuestionKeys.some((key) => !answers[number][key]));
+  const unknownAnswers = activeVideos.filter((number) => allQuestionKeys.some((key) => answers[number][key] === "unknown"));
   const progress = demoMode ? demoProgress : 0;
   const stageIndex = demoMode ? Math.min(Math.floor(progress / 25), stages.length) : -1;
 
@@ -35,7 +35,7 @@ export default function AnalysisPage() {
       step="05"
       stepName="분석 진행"
       title={demoMode ? "분석을 진행하고 있습니다" : "분석을 준비 중입니다"}
-      description={demoMode ? "세 장면의 자세와 답변을 각각 확인합니다." : "세 장면의 입력 상태를 확인합니다."}
+      description={demoMode ? "세 장면의 자세와 답변을 각각 확인합니다." : "평가할 장면의 입력 상태를 확인합니다."}
     >
       <div className="analysis-content">
         {demoMode ? (

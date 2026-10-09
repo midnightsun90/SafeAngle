@@ -1,9 +1,10 @@
 import type { VideoNumber } from "@/components/VideoFilesProvider";
+import { uploadCopy } from "@/lib/uploadCopy";
 
 export const videoTitles: Record<VideoNumber, string> = {
-  1: "낮은 곳 → 높은 곳",
-  2: "앉아서 손 작업",
-  3: "물체 밀기/당기기",
+  1: uploadCopy[1].title,
+  2: uploadCopy[2].title,
+  3: uploadCopy[3].title,
 };
 
 // Values from the screen-06 concept image. They are shown only in demo mode.

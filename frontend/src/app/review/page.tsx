@@ -8,11 +8,12 @@ import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
 import { formatVideoTime, isVideoFile } from "@/lib/video";
 import { demoImages } from "@/lib/demoImages";
+import { uploadCopy } from "@/lib/uploadCopy";
 
 const videos: { number: VideoNumber; title: string }[] = [
-  { number: 1, title: "낮은 곳 → 높은 곳" },
-  { number: 2, title: "앉아서 손 작업" },
-  { number: 3, title: "물체 밀기/당기기" },
+  { number: 1, title: uploadCopy[1].title },
+  { number: 2, title: uploadCopy[2].title },
+  { number: 3, title: uploadCopy[3].title },
 ];
 
 function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) {
@@ -107,7 +108,7 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
 
 export default function VideoReview() {
   const router = useRouter();
-  const { files, selectedTimes, demoMode } = useVideoFiles();
+  const { files, selectedTimes, demoMode, skipped, activeVideos, setResultVideo } = useVideoFiles();
   const [message, setMessage] = useState("");
   const [hasError, setHasError] = useState(false);
 
@@ -116,13 +117,19 @@ export default function VideoReview() {
       router.push("/questions/1/1");
       return;
     }
-    const missing = videos.filter(({ number }) => !files[number] || selectedTimes[number] === null).map(({ number }) => number);
+    if (activeVideos.length === 0) {
+      setMessage("세 작업 모두 하지 않는 것으로 선택했습니다. 평가할 작업 영상이 없습니다.");
+      setHasError(true);
+      return;
+    }
+    const missing = activeVideos.filter((number) => !files[number] || selectedTimes[number] === null);
     if (missing.length > 0) {
       setMessage(`영상 ${missing.join("·")}의 평가 장면을 선택해 주세요.`);
       setHasError(true);
       return;
     }
-    router.push("/questions/1/1");
+    setResultVideo(activeVideos[0]);
+    router.push(`/questions/${activeVideos[0]}/1`);
   }
 
   return (
@@ -130,12 +137,18 @@ export default function VideoReview() {
       step="03"
       stepName="영상 확인"
       title="영상을 확인해 주세요"
-      description="세 영상을 재생하고 평가할 장면을 선택하세요."
+      description="올린 영상을 재생하고 평가할 장면을 선택해주세요."
       wide
     >
       {demoMode && <p className="demo-disclaimer">예시 사진으로 보는 화면입니다. 실제 영상이나 분석 결과가 아닙니다.</p>}
       <div className="review-grid">
-        {videos.map((video) => <ReviewVideo key={video.number} {...video} />)}
+        {videos.map((video) => !demoMode && skipped[video.number] ? (
+          <section className="review-item" key={video.number}>
+            <h2>{video.number}. {video.title}</h2>
+            <p>하지 않는 작업 · 건너뛰었습니다.</p>
+            <Link href={`/upload/${video.number}`}>작업 선택 변경</Link>
+          </section>
+        ) : <ReviewVideo key={video.number} {...video} />)}
       </div>
       <div className="review-footer">
         <button className="next-button" type="button" onClick={finishReview}>확인 완료 · 질문으로 <span aria-hidden="true">→</span></button>

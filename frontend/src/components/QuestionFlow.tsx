@@ -10,11 +10,12 @@ import { questionGroups, type QuestionGroup } from "@/lib/questions";
 
 export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber: VideoNumber; groupNumber: QuestionGroup }) {
   const router = useRouter();
-  const { files, selectedTimes, answers, demoMode, setAnswer } = useVideoFiles();
+  const { files, selectedTimes, answers, demoMode, setAnswer, activeVideos } = useVideoFiles();
   const [error, setError] = useState("");
   const group = questionGroups[groupNumber];
   const values = answers[videoNumber];
-  const ready = demoMode || (files[videoNumber] && selectedTimes[videoNumber] !== null);
+  const ready = activeVideos.includes(videoNumber) && (demoMode || (files[videoNumber] && selectedTimes[videoNumber] !== null));
+  const nextVideo = activeVideos.find((number) => number > videoNumber);
 
   function continueToNext(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +31,7 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
     }
     setError("");
     if (groupNumber < 4) router.push(`/questions/${videoNumber}/${groupNumber + 1}`);
-    else if (videoNumber < 3) router.push(`/questions/${videoNumber + 1}/1`);
+    else if (nextVideo) router.push(`/questions/${nextVideo}/1`);
     else router.push("/analysis");
   }
 
@@ -72,7 +73,7 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
         <div className="question-footer">
           <p>확인 불가는 0점으로 처리하지 않습니다. 해당 장면은 확정 점수를 낼 수 없습니다.</p>
           {error && <p className="form-status form-status-error" role="alert">{error}</p>}
-          <button className="next-button" type="submit">{groupNumber === 4 && videoNumber === 3 ? "분석 진행 화면으로" : "다음 질문으로"}<span aria-hidden="true">→</span></button>
+          <button className="next-button" type="submit">{groupNumber === 4 && !nextVideo ? "분석 진행 화면으로" : "다음 질문으로"}<span aria-hidden="true">→</span></button>
           {demoMode && <Link className="demo-skip" href="/analysis">예시 분석 화면 바로 보기</Link>}
         </div>
       </form>

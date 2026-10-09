@@ -11,7 +11,7 @@ import { sampleResults, videoTitles } from "@/lib/resultData";
 type WorkContext = { company: string; worksite: string; task: string };
 
 export default function ResultsPage() {
-  const { demoMode, files, selectedTimes, answers, resultVideo, setResultVideo } = useVideoFiles();
+  const { demoMode, files, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
   const [work, setWork] = useState<WorkContext | null>(null);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function ResultsPage() {
     } catch { /* Work information is optional on this page. */ }
   }, []);
 
-  const numbers: VideoNumber[] = [1, 2, 3];
+  const numbers: VideoNumber[] = activeVideos;
   const sample = sampleResults[resultVideo];
   const incompleteAnswers = numbers.filter((number) => Object.values(answers[number]).includes("unknown"));
 
@@ -32,6 +32,7 @@ export default function ResultsPage() {
         {demoMode && <span className="sample-badge">시안용 예시</span>}
       </div>
       <p className="results-disclaimer">{demoMode ? "아래 점수는 디자인 시안의 예시입니다. 사진을 분석해 얻은 결과가 아닙니다." : "영상 각도 측정과 REBA 계산 엔진 연결 전입니다. 현재 확정 점수는 없습니다."}</p>
+      <p className="result-note">평가 범위는 올린 영상과 선택한 장면입니다. 하지 않는 것으로 선택한 작업은 평가 대상에서 제외됩니다.</p>
       <div className="result-metrics" aria-label="평가 결과 요약">
         <div><span>확정 장면 중 최고 점수</span><strong>{demoMode ? "8점" : "미확정"}</strong></div>
         <div><span>위험 수준</span><strong>{demoMode ? "높음" : "미확정"}</strong></div>

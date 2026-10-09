@@ -131,6 +131,9 @@
 .form-status-error { color: #ba3210; }
 
 .upload-content { margin-top: 56px; }
+.shooting-guide .filming-notice { margin-bottom: 28px; color: var(--ink); }
+.upload-skip { display: block; margin: 18px auto 24px; padding: 10px; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+.upload-skip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 .shooting-guide h2 {
   margin: 0 0 17px;
