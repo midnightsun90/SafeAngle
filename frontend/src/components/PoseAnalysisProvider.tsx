@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
 import type { VideoAnalysis } from "../../../lib/pose/video.ts";
 import { frameAtTime, poseResultRow, readPoseResult, representativeFrame, toPoseResult, type PoseResult } from "@/lib/poseResult";
 import { supabase } from "@/lib/supabaseClient";
@@ -21,7 +20,6 @@ type ContextValue = {
 const PoseAnalysisContext = createContext<ContextValue | null>(null);
 
 export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
   const { activeEvaluation, files, storedVideos, skipped, demoMode } = useVideoFiles();
   const [results, setResults] = useState<ContextValue["results"]>({});
   const [states, setStates] = useState<ContextValue["states"]>({});
@@ -36,7 +34,7 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const currentAssessmentId = assessmentId;
-    if (pathname !== "/confirmation" || !currentAssessmentId || !ownerId || demoMode || !supabase) return;
+    if (!currentAssessmentId || !ownerId || demoMode || !supabase) return;
     const client = supabase;
     const controller = new AbortController();
     let active = true;
@@ -109,7 +107,7 @@ export function PoseAnalysisProvider({ children }: { children: ReactNode }) {
 
     void run();
     return () => { active = false; controller.abort(); };
-  }, [pathSignature, pathname, demoMode, retryRequest?.id]);
+  }, [pathSignature, demoMode, retryRequest?.id]);
 
   async function selectFrame(number: VideoNumber, timeSec: number) {
     if (!assessmentId || !ownerId || !supabase) throw new Error("평가를 먼저 선택해 주세요.");

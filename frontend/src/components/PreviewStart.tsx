@@ -15,7 +15,7 @@ export default function PreviewStart() {
     try { if (sessionStorage.getItem(previewRealKey) === "1") return; } catch { /* Show the example preview. */ }
     started.current = true;
     startDemo();
-    router.replace("/output-preview");
+    router.replace("/review");
   }, [pathname, ready, router, startDemo]);
 
   return null;
