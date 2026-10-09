@@ -80,6 +80,7 @@ export default function AnalysisPage() {
           {demoMode && demoRunning && progress < 100 && <button type="button" onClick={() => setDemoRunning(false)}>예시 멈추기</button>}
           {demoMode && !demoRunning && progress < 100 && <button type="button" onClick={() => setDemoRunning(true)}>예시 이어 보기</button>}
         </div>
+        {(demoMode ? progress === 100 : true) && <Link className="next-button analysis-result-link" href="/results">결과 요약 보기 <span aria-hidden="true">→</span></Link>}
       </div>
     </EvaluationShell>
   );
