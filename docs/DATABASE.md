@@ -61,6 +61,7 @@ v6의 **Q4-3은 분석 후 필요할 때 장면을 보며 확인**한다고 적�
 
 - 화면 진행 위치와 추천 장면 확인 여부는 브라우저에만 저장한다.
 - 분석 결과 자동 저장·복원은 제품 엔진에 연결했다. 10/9 최신 DB에서는 평가 식별 테이블에서 결과·상태·점수 열이 삭제되어 신규 `assessment_analysis_results`로 분리했다. [결과 테이블 SQL](../supabase/migrations/20261009064000_assessment_analysis_results.sql)은 팀원이 적용했고 실제 결과 저장·복원과 관리자별 RLS를 재검증했다. 현재 영상 경로·선택 장면과 맞는 결과만 복원하며 입력 변경 시 이전 점수를 무효화한다. 상세 계약과 실제·가로채기 검증 구분은 [저장 확인 기록](STORAGE_VERIFICATION.md)에 있다.
+- 업로드한 영상은 브라우저에서 MediaPipe로 자동 분석한다. 자세별 대표 장면의 좌우 6개 각도와 측정 품질을 별도 `assessment_pose_results` 표에 저장하고, 결과 요약 화면에서 각도 막대로 표시한다. 이 표에는 최종 점수나 좋음·나쁨 판정이 없다. [측정 결과 테이블 SQL](../supabase/migrations/20261009070846_assessment_pose_results.sql)을 원격 DB에 적용했다.
 - 다른 기기에서 기존 관리자 기록에 접근할 수 있는 계정 로그인 방식.
 
 개발용 SQL: [DB 생성 파일](../supabase/migrations/20261009044810_safeangle_core.sql), [v6 평가 입력 추가 파일](../supabase/migrations/20261009051522_assessment_inputs_before_analysis.sql), [회사·작업 입력 삭제 파일](../supabase/migrations/20261009052807_remove_company_work_step.sql). 세 파일의 SQL은 Supabase 화면에서 실행했지만 원격 마이그레이션 이력에는 등록되지 않았다. 다시 실행하기 전에 이력을 맞춰야 한다.

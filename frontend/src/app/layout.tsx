@@ -6,6 +6,7 @@ import "./dashboard.css";
 import { VideoFilesProvider } from "@/components/VideoFilesProvider";
 import DashboardShell from "@/components/DashboardShell";
 import PreviewStart from "@/components/PreviewStart";
+import { PoseAnalysisProvider } from "@/components/PoseAnalysisProvider";
 
 const pretendard = localFont({ src: "./fonts/PretendardVariable.woff2", variable: "--font-pretendard", weight: "100 900", display: "swap" });
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" className={pretendard.variable}>
-      <body><VideoFilesProvider><PreviewStart /><DashboardShell>{children}</DashboardShell></VideoFilesProvider></body>
+      <body><VideoFilesProvider><PoseAnalysisProvider><PreviewStart /><DashboardShell>{children}</DashboardShell></PoseAnalysisProvider></VideoFilesProvider></body>
     </html>
   );
 }
