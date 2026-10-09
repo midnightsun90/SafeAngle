@@ -1,11 +1,9 @@
 export type VideoNumber = 1 | 2 | 3;
-export type WorkContext = { company: string; worksite: string; task: string };
 export type Evaluation = {
   id: string;
   name: string;
   createdAt: string;
   lastPath: string;
-  work: WorkContext;
   selectedTimes: Record<VideoNumber, number | null>;
   answers: Record<VideoNumber, Record<string, string>>;
   skipped: Record<VideoNumber, boolean>;
@@ -35,8 +33,7 @@ export function addEvaluation(state: DashboardState, name: string, id: string): 
     id,
     name: trimmed,
     createdAt: new Date().toISOString(),
-    lastPath: "/evaluation",
-    work: { company: "", worksite: "", task: "" },
+    lastPath: "/upload/1",
     selectedTimes: { 1: null, 2: null, 3: null },
     answers: { 1: {}, 2: {}, 3: {} },
     skipped: { 1: false, 2: false, 3: false },
@@ -80,18 +77,25 @@ export function readDashboardState(raw: string | null): DashboardState | null {
     if (typeof candidate.evaluatorName !== "string" || !Array.isArray(candidate.evaluations)) return null;
     const evaluations = candidate.evaluations.filter((item): item is Evaluation =>
       Boolean(item && typeof item.id === "string" && typeof item.name === "string" &&
-      typeof item.lastPath === "string" && item.work && typeof item.work.company === "string" &&
+      typeof item.lastPath === "string" &&
       item.selectedTimes && item.answers && item.fileKeys && item.skipped),
     );
     return {
       evaluatorName: candidate.evaluatorName,
       activeId: typeof candidate.activeId === "string" && evaluations.some((item) => item.id === candidate.activeId)
         ? candidate.activeId : null,
-      evaluations: evaluations.map((item) => ({ ...item, confirmedScenes: {
-        1: item.confirmedScenes?.[1] === true,
-        2: item.confirmedScenes?.[2] === true,
-        3: item.confirmedScenes?.[3] === true,
-      } })),
+      evaluations: evaluations.map((item) => {
+        const restored = { ...item } as Evaluation & { work?: unknown };
+        delete restored.work;
+        return { ...restored,
+          lastPath: item.lastPath === "/evaluation" ? "/upload/1" : item.lastPath,
+          confirmedScenes: {
+            1: item.confirmedScenes?.[1] === true,
+            2: item.confirmedScenes?.[2] === true,
+            3: item.confirmedScenes?.[3] === true,
+          },
+        };
+      }),
     };
   } catch {
     return null;

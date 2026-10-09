@@ -19,15 +19,24 @@ test("저장한 평가를 다시 읽으면 이름, 답변, 진행 경로가 남�
   const state = updateEvaluation(addEvaluation(createDashboardState("민서"), "김하늘", "first"), "first", (item) => ({
     ...item,
     lastPath: "/questions/1/2",
-    work: { company: "예시", worksite: "조립", task: "포장" },
     answers: { ...item.answers, 1: { load: "5" } },
   }));
   const restored = readDashboardState(JSON.stringify(state));
 
   assert.equal(restored?.evaluatorName, "민서");
   assert.equal(restored?.evaluations[0].lastPath, "/questions/1/2");
-  assert.equal(restored?.evaluations[0].work.company, "예시");
   assert.equal(restored?.evaluations[0].answers[1].load, "5");
+});
+
+test("새 평가는 영상 1에서 시작하고 예전 회사 입력은 복원하지 않는다", () => {
+  const state = addEvaluation(createDashboardState("민서"), "김하늘", "first");
+  assert.equal(state.evaluations[0].lastPath, "/upload/1");
+  const legacy = JSON.parse(JSON.stringify(state));
+  legacy.evaluations[0].lastPath = "/evaluation";
+  legacy.evaluations[0].work = { company: "예전 회사", worksite: "예전 사업장", task: "예전 작업" };
+  const restored = readDashboardState(JSON.stringify(legacy));
+  assert.equal(restored?.evaluations[0].lastPath, "/upload/1");
+  assert.equal("work" in (restored?.evaluations[0] ?? {}), false);
 });
 
 test("손상된 브라우저 저장값은 사용하지 않는다", () => {

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useVideoFiles } from "@/components/VideoFilesProvider";
 
 type EvaluationShellProps = {
-  step: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+  step: "01" | "02" | "03" | "04" | "05" | "06" | "07";
   stepName: string;
   title: string;
   description?: string;
@@ -30,7 +30,7 @@ export default function EvaluationShell({ step, stepName, title, description, ey
         <section className={`work-intro${media ? " work-intro-media" : ""}`} aria-labelledby="page-title">
           {media}
           <div>
-            <p className="step-label">{eyebrow ?? `${step} / 08 · ${stepName}`}</p>
+            <p className="step-label">{eyebrow ?? `${step} / 07 · ${stepName}`}</p>
             <h1 id="page-title">{title}</h1>
             {description && <p className="page-description">{description}</p>}
           </div>

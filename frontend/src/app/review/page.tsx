@@ -120,7 +120,7 @@ export default function VideoReview() {
 
   return (
     <EvaluationShell
-      step="03"
+      step="02"
       stepName="영상 확인"
       title="올린 영상을 확인해주세요"
       description="올린 영상이 맞는지 재생해 확인해주세요. 평가할 장면은 분석 후 AI가 추천합니다."
