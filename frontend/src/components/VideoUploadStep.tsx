@@ -7,6 +7,7 @@ import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider
 import { formatVideoTime } from "@/lib/video";
 import { validateVideoFile } from "@/lib/videoStorage";
 import { filmingNotice, uploadCopy } from "@/lib/uploadCopy";
+import "./upload-status.css";
 
 
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
@@ -56,7 +57,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     setPendingFile(file);
     setDuration(null);
     setProgress(0);
-    setMessage("영상이 선택됐습니다. 아래 다음 버튼을 누르면 저장합니다.");
+    setMessage("");
     setHasError(false);
   }
 
@@ -83,7 +84,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     if (pendingFile) {
       setUploading(true);
       setProgress(0);
-      setMessage("영상을 업로드하고 있습니다.");
+      setMessage("");
       setHasError(false);
       try {
         await setFile(number, pendingFile, setProgress);
@@ -132,11 +133,12 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
             <span>{duration ?? (storedVideo?.duration_seconds != null ? formatVideoTime(storedVideo.duration_seconds) : "길이 확인 불가")}</span>
           </p>
         )}
-        {uploading && <p className="form-status" role="status">업로드 중 {progress}%</p>}
+        {(displayFile || storedVideo) && <p className="upload-state" role="status">{uploading ? `저장 중 · ${progress}%` : pendingFile ? "선택됨 · 다음을 누르면 저장" : "저장 완료"}</p>}
+        {uploading && <div className="upload-progress" role="progressbar" aria-label="영상 업로드" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div>}
 
         <p className="shooting-note">{config.note}</p>
 
-        <button className="next-button" type="button" onClick={() => { void handleNext(); }} disabled={uploading}>{uploading ? `업로드 중 ${progress}%` : config.nextLabel} {!uploading && <span aria-hidden="true">→</span>}</button>
+        <button className="next-button" type="button" onClick={() => { void handleNext(); }} disabled={uploading}>{uploading ? `영상 저장 중 ${progress}%` : pendingFile ? "저장하고 다음으로" : config.nextLabel} {!uploading && <span aria-hidden="true">→</span>}</button>
         <button className="upload-skip" type="button" disabled={uploading} onClick={async () => {
           try { await skipVideo(number); router.push(config.nextPath); }
           catch { setMessage("영상을 삭제하지 못했습니다. 다시 시도해 주세요."); setHasError(true); }
