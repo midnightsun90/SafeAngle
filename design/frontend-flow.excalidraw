@@ -24,7 +24,7 @@
                          "frameId":  null,
                          "roundness":  null,
                          "seed":  137,
-                         "version":  1,
+                         "version":  2,
                          "versionNonce":  193,
                          "isDeleted":  false,
                          "boundElements":  null,
@@ -39,7 +39,10 @@
                          "verticalAlign":  "top",
                          "containerId":  null,
                          "autoResize":  false,
-                         "lineHeight":  1.5
+                         "lineHeight":  1.5,
+                         "customData":  {
+                                            "designAuthor":  "임서현"
+                                        }
                      },
                      {
                          "id":  "scope",
