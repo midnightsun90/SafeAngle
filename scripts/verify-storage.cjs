@@ -195,6 +195,15 @@ async function main() {
     assert(denied.error && !denied.data);
     const hidden = await outsider.from('assessments').select('id').eq('id', item.assessmentId);
     assert(!hidden.error && hidden.data.length === 0);
+    if (!mockAnalysis) {
+      const hiddenResult = await outsider.from('assessment_analysis_results').select('id').eq('id', item.assessmentId);
+      assert(!hiddenResult.error && hiddenResult.data.length === 0);
+      const deniedEdit = await outsider.from('assessment_analysis_results').update({ status: 'needs_review' }).eq('id', item.assessmentId).select('id');
+      assert(!deniedEdit.error && deniedEdit.data.length === 0);
+      const forgedOwner = await outsider.from('assessment_analysis_results').upsert({ id: item.assessmentId, manager_id: manager }, { onConflict: 'id' });
+      assert.equal(forgedOwner.error?.code, '42501');
+      summary.checks.push('actual analysis RLS: other manager cannot read, update, or forge owner');
+    }
     const publicGet = await fetch(`${url}/storage/v1/object/public/assessment-videos/${storagePath}`);
     assert(!publicGet.ok);
     summary.checks.push('other authenticated manager and public URL cannot read video/assessment');
