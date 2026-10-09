@@ -1,0 +1,34 @@
+.sa-evaluation { display: grid; gap: 22px; }
+.sa-evaluation h2 { margin: 0 0 14px; font-size: 20px; font-weight: 750; }
+.sa-evaluation p { line-height: 1.65; margin-block: 12px; }
+.sa-muted { color: var(--color-gray-500); font-size: 12px; }
+.sa-error { color: var(--color-error-700); padding: 12px 16px; background: var(--color-error-50); border-radius: 9px; }
+.sa-evaluation-head, .sa-controls, .sa-video-tabs, .sa-score-header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.sa-video-tabs { justify-content: flex-start; margin-top: 20px; }
+.sa-video-tabs button { border: 1px solid var(--color-gray-200); border-radius: 8px; padding: 9px 12px; font-size: 12px; max-width: 100%; overflow-wrap: anywhere; }
+.sa-video-tabs button[aria-selected=true] { background: var(--color-brand-50); color: var(--color-brand-700); border-color: var(--color-brand-200); }
+.sa-video-stage { position: relative; width: min(100%, 560px); margin: 20px auto; background: #111827; border-radius: 12px; overflow: hidden; }
+.sa-video-stage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sa-video-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.sa-scene-controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+.sa-scene-controls label { display: grid; gap: 8px; font-size: 12px; }
+.sa-scene-controls input { min-width: 230px; }
+.sa-scene-controls select, .sa-question select, .sa-question input { border: 1px solid var(--color-gray-300); background: white; border-radius: 8px; padding: 11px; width: 100%; font: inherit; color: var(--color-gray-800); }
+.sa-question input:focus-visible, .sa-question select:focus-visible, .sa-scene-controls select:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
+.sa-question { display: grid; gap: 8px; font-size: 13px; margin-block: 10px; min-width: 0; }
+.sa-question-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 22px; }
+.sa-evaluation fieldset { border: 1px solid var(--color-gray-200); border-radius: 12px; padding: 18px; margin-block: 24px; }
+.sa-evaluation legend { font-weight: 700; padding-inline: 8px; }
+.sa-link-button { text-align: left; color: var(--color-brand-600); font-size: 12px; text-decoration: underline; width: fit-content; }
+.sa-table-scroll { overflow-x: auto; margin-block: 22px; }
+.sa-evaluation table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.sa-evaluation caption { text-align: left; color: var(--color-gray-500); padding-bottom: 10px; }
+.sa-evaluation td, .sa-evaluation th { padding: 11px 9px; border-bottom: 1px solid var(--color-gray-200); vertical-align: top; }
+.sa-evaluation th { font-weight: 650; }
+.sa-evaluation thead { background: var(--color-gray-50); }
+.sa-evaluation small { display: block; color: var(--color-gray-500); font-size: 10px; margin-top: 4px; }
+.sa-score-header strong { font-size: 32px; color: var(--color-brand-600); }
+.sa-evaluation details { font-size: 12px; padding: 12px 0; }
+.sa-evaluation ul { padding-left: 24px; list-style: disc; line-height: 1.8; }
+.sa-evaluation progress { accent-color: var(--color-brand-500); }
+@media (max-width: 720px) { .sa-question-grid { grid-template-columns: 1fr; } .sa-score-header strong { font-size: 24px; } }

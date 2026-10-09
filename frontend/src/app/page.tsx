@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
+import EvaluationFlow from "@/components/EvaluationFlow";
 
 type WorkContext = {
   company: string;
@@ -41,6 +42,9 @@ export default function Home() {
   const [context, setContext] = useState<WorkContext>(emptyContext);
   const [recentContexts, setRecentContexts] = useState<WorkContext[]>([]);
   const [saved, setSaved] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [stage, setStage] = useState(1);
+  const [storageNotice, setStorageNotice] = useState("");
 
   useEffect(() => {
     setRecentContexts(readRecentContexts());
@@ -69,7 +73,8 @@ export default function Home() {
           item.task !== next.task,
       ),
     ].slice(0, 8);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    try { localStorage.setItem(storageKey, JSON.stringify(updated)); setStorageNotice(""); }
+    catch { setStorageNotice("브라우저 저장을 사용할 수 없습니다. 현재 평가에서 입력값은 유지됩니다."); }
     setRecentContexts(updated);
     setContext(next);
     setSaved(true);
@@ -92,7 +97,7 @@ export default function Home() {
           <p className="sa-sidebar-label">진행 순서</p>
           <ol className="sa-step-list">
             {steps.map((step, index) => (
-              <li key={step.number} className={index === 0 ? "sa-step sa-step-current" : "sa-step"}>
+              <li key={step.number} className={index + 1 === stage ? "sa-step sa-step-current" : "sa-step"} aria-current={index + 1 === stage ? "step" : undefined}>
                 <span className="sa-step-number">{step.number}</span>
                 <span className="sa-step-copy"><strong>{step.title}</strong><small>{step.description}</small></span>
               </li>
@@ -106,20 +111,20 @@ export default function Home() {
       <main className="sa-main">
         <header className="sa-topbar">
           <div className="sa-breadcrumb">작업 평가 <span>/</span> 새 평가</div>
-          <div className="sa-topbar-badge"><span className="sa-status-dot" /> 1단계 / 6단계</div>
+          <div className="sa-topbar-badge"><span className="sa-status-dot" /> {stage}단계 / 6단계</div>
         </header>
 
         <div className="sa-content">
           <div className="sa-page-heading">
             <div>
-              <span className="sa-eyebrow">새 작업 평가 · 01</span>
-              <h1>어떤 작업을 평가하나요?</h1>
-              <p>회사의 작업 위치와 공정을 기록하면, 다음 단계에서 해당 작업의 영상을 확인할 수 있습니다.</p>
+              <span className="sa-eyebrow">새 작업 평가 · {String(stage).padStart(2,"0")}</span>
+              <h1>{evaluating ? "작업 장면을 평가합니다." : "어떤 작업을 평가하나요?"}</h1>
+              <p>{evaluating ? `${context.company} / ${context.worksite} / ${context.task}` : "회사의 작업 위치와 공정을 기록하면, 다음 단계에서 해당 작업의 영상을 확인할 수 있습니다."}</p>
             </div>
-            <div className="sa-heading-index" aria-hidden="true">01<span>/ 06</span></div>
+            <div className="sa-heading-index" aria-hidden="true">{String(stage).padStart(2,"0")}<span>/ 06</span></div>
           </div>
 
-          <div className="sa-workspace">
+          {evaluating ? <><Button variant="outline" onClick={()=>{setEvaluating(false);setStage(1);}}>작업 정보로 돌아가기 (현재 영상 평가 초기화)</Button><EvaluationFlow task={context.task} onStage={setStage}/></> : <div className="sa-workspace">
             <section className="sa-form-card" aria-labelledby="work-context-heading">
               <div className="sa-card-head">
                 <div className="sa-card-icon" aria-hidden="true">▦</div>
@@ -167,7 +172,9 @@ export default function Home() {
                   <Button className="sa-submit" endIcon={<span aria-hidden="true">→</span>}>정보 저장</Button>
                 </div>
                 {saved && <p className="sa-saved" role="status">회사·작업 정보를 저장했습니다.</p>}
+                {storageNotice && <p role="status">{storageNotice}</p>}
               </form>
+              {saved && <Button onClick={()=>{setEvaluating(true);setStage(2);}}>영상 평가로 이동</Button>}
             </section>
 
             <aside className="sa-next-card" aria-label="다음 단계 안내">
@@ -179,11 +186,11 @@ export default function Home() {
               </div>
               <div className="sa-next-copy">
                 <span>02 / 촬영 영상</span>
-                <h2>작업 영상 3개를<br />각각 올립니다.</h2>
-                <p>낮은 곳에서 높은 곳으로 옮기기, 앉아서 손 작업하기, 물체 밀기·당기기 영상을 차례로 확인합니다.</p>
+                <h2>작업 영상부터<br />확인합니다.</h2>
+                <p>낮은 곳에서 높은 곳으로 옮기기, 앉아서 손 작업하기, 밀기·당기기는 촬영 후보입니다. 실제 작업에 해당하는 영상 한 편부터 최대 3편까지 각각 평가합니다.</p>
               </div>
             </aside>
-          </div>
+          </div>}
 
           <p className="sa-page-footnote">SafeAngle은 선택한 장면마다 REBA 점수를 따로 계산하도록 설계되어 있습니다.</p>
         </div>

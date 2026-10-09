@@ -22,4 +22,7 @@ if (!bytes) {
   finally { await rm(temporary, { force: true }); }
 }
 if (createHash("sha256").update(bytes).digest("hex") !== expectedHash) throw new Error("로컬 모델 파일이 손상됐습니다. 파일을 지우고 다시 준비하십시오.");
+await mkdir(new URL("frontend/public/models/",root), {recursive:true});
+await cp(target,new URL("frontend/public/models/pose_landmarker_full.task",root));
+await cp(new URL("public/wasm/",root),new URL("frontend/public/wasm/",root),{recursive:true});
 console.log(`MediaPipe full 모델 준비: ${bytes.length} bytes, SHA256 ${createHash("sha256").update(bytes).digest("hex")}`);

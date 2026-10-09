@@ -8,5 +8,7 @@ coverage/
 *.log
 public/wasm/
 public/models/
+frontend/public/wasm/
+frontend/public/models/
 .local/
 .engine-build/
