@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
-import { isVideoFile } from "@/lib/video";
+import { useVideoSource } from "@/components/useVideoSource";
+import { validateVideoFile } from "@/lib/videoStorage";
 import { demoImages } from "@/lib/demoImages";
 import { uploadCopy } from "@/lib/uploadCopy";
 
@@ -16,37 +17,30 @@ const videos: { number: VideoNumber; title: string }[] = [
   { number: 3, title: uploadCopy[3].title },
 ];
 
-function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) {
-  const { files, demoMode, setFile, uploading, loadingVideos } = useVideoFiles();
+function ReviewVideo({ number, title, onUploadingChange }: { number: VideoNumber; title: string; onUploadingChange: (number: VideoNumber, uploading: boolean) => void }) {
+  const { files, storedVideos, demoMode, setFile } = useVideoFiles();
   const file = files[number];
+  const storedVideo = storedVideos[number];
 
-  const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const { src, error: sourceError } = useVideoSource(number);
   const [error, setError] = useState("");
-  const [storageConsent, setStorageConsent] = useState(false);
-
-  useEffect(() => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
-    return () => {
-      setVideoUrl(null);
-      URL.revokeObjectURL(url);
-    };
-  }, [file]);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   async function replaceVideo(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0];
     event.target.value = "";
     if (!nextFile) return;
-    if (!storageConsent || uploading) return;
-    if (!isVideoFile(nextFile)) {
-      setError("영상 파일을 선택해 주세요.");
-      return;
-    }
-    try { await setFile(number, nextFile); setError(""); }
-    catch (error) { setError(error instanceof Error ? error.message : "영상을 저장하지 못했습니다."); }
+    const validationError = validateVideoFile(nextFile);
+    if (validationError) { setError(validationError); return; }
+    setUploading(true);
+    onUploadingChange(number, true);
+    setProgress(0);
+    setError("");
+    try { await setFile(number, nextFile, setProgress); }
+    catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "영상 교체에 실패했습니다."); }
+    finally { setUploading(false); onUploadingChange(number, false); }
   }
 
   return (
@@ -57,11 +51,10 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
           <Image src={demoImages[number]} alt={`${title} 작업 예시 사진`} fill unoptimized sizes="(max-width: 1050px) 100vw, 33vw" />
           <span>예시 사진</span>
         </div>
-      ) : file ? (
+      ) : file || storedVideo ? (
         <video
-          ref={videoRef}
           className="review-player"
-          src={videoUrl ?? undefined}
+          src={src ?? undefined}
           controls
           playsInline
           preload="metadata"
@@ -76,31 +69,37 @@ function ReviewVideo({ number, title }: { number: VideoNumber; title: string }) 
       )}
 
       <div className="review-actions">
-        {!demoMode && <label className="video-storage-consent"><input type="checkbox" checked={storageConsent} onChange={(event) => setStorageConsent(event.target.checked)} disabled={uploading} />촬영 대상자의 동의를 받았으며, 교체 영상을 비공개 저장소에 저장하는 데 동의합니다.</label>}
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode || !storageConsent || uploading || loadingVideos}>{uploading ? "저장 중..." : "영상 바꾸기"}</button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={demoMode || uploading}>{uploading ? `업로드 중 ${progress}%` : "영상 바꾸기"}</button>
         <input
           ref={fileInputRef}
           className="visually-hidden"
           type="file"
           accept="video/*,.mov,.mp4,.webm,.m4v"
           tabIndex={-1}
-          onChange={replaceVideo}
+          disabled={uploading}
+          onChange={(event) => { void replaceVideo(event); }}
           aria-label={`영상 ${number} 교체 파일`}
         />
       </div>
-      {!demoMode && file && <p className="review-filename" title={file.name}>{file.name}</p>}
-      {error && <p className="review-error" role="alert">{error}</p>}
+      {!demoMode && (file || storedVideo) && <p className="review-filename" title={file?.name ?? storedVideo?.original_filename ?? ""}>{file?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</p>}
+      {(error || sourceError) && <p className="review-error" role="alert">{error || sourceError}</p>}
     </section>
   );
 }
 
 export default function VideoReview() {
   const router = useRouter();
-  const { files, demoMode, skipped, activeVideos, setResultVideo } = useVideoFiles();
+  const { files, storedVideos, demoMode, skipped, activeVideos, setResultVideo, leaveDemo } = useVideoFiles();
   const [message, setMessage] = useState("");
   const [hasError, setHasError] = useState(false);
+  const [uploadingVideos, setUploadingVideos] = useState<VideoNumber[]>([]);
+
+  function updateUploading(number: VideoNumber, uploading: boolean) {
+    setUploadingVideos((current) => uploading ? [...current, number] : current.filter((item) => item !== number));
+  }
 
   function finishReview() {
+    if (uploadingVideos.length) return;
     if (demoMode) {
       router.push("/questions/1/2");
       return;
@@ -110,7 +109,7 @@ export default function VideoReview() {
       setHasError(true);
       return;
     }
-    const missing = activeVideos.filter((number) => !files[number]);
+    const missing = activeVideos.filter((number) => !files[number] && !storedVideos[number]);
     if (missing.length > 0) {
       setMessage(`영상 ${missing.join("·")}을 올려주세요.`);
       setHasError(true);
@@ -136,10 +135,11 @@ export default function VideoReview() {
             <p>하지 않는 작업 · 건너뛰었습니다.</p>
             <Link href={`/upload/${video.number}`}>작업 선택 변경</Link>
           </section>
-        ) : <ReviewVideo key={video.number} {...video} />)}
+        ) : <ReviewVideo key={video.number} {...video} onUploadingChange={updateUploading} />)}
       </div>
       <div className="review-footer">
-        <button className="next-button" type="button" onClick={finishReview}>다음: 작업 조건 입력 <span aria-hidden="true">→</span></button>
+        <button className="next-button" type="button" onClick={finishReview} disabled={uploadingVideos.length > 0}>다음: 작업 조건 입력 <span aria-hidden="true">→</span></button>
+        {demoMode && <button className="upload-skip" type="button" onClick={() => { leaveDemo(); router.replace("/"); }}>실제 영상으로 평가 시작하기</button>}
         {message && <p className={`review-message${hasError ? " form-status-error" : ""}`} role={hasError ? "alert" : "status"}>{message}</p>}
       </div>
     </EvaluationShell>

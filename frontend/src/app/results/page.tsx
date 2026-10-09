@@ -8,7 +8,7 @@ import { formatVideoTime } from "@/lib/video";
 import { sampleResults, videoTitles } from "@/lib/resultData";
 
 export default function ResultsPage() {
-  const { demoMode, confirmedScenes, activeEvaluation, files, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
+  const { demoMode, confirmedScenes, activeEvaluation, files, storedVideos, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
 
   const numbers: VideoNumber[] = activeVideos;
   const showSample = demoMode && numbers.length > 0 && numbers.every((number) => confirmedScenes[number]);
@@ -39,7 +39,7 @@ export default function ResultsPage() {
           <div className="result-scene-list">
             {numbers.map((number) => {
               const result = sampleResults[number];
-              const reason = !files[number] || selectedTimes[number] === null ? "장면 미선택" : Object.values(answers[number]).includes("unknown") ? "확인 불가 입력" : "분석 엔진 연결 대기";
+              const reason = (!files[number] && !storedVideos[number]) || selectedTimes[number] === null ? "장면 미선택" : Object.values(answers[number]).includes("unknown") ? "확인 불가 입력" : "분석 엔진 연결 대기";
               return (
                 <button className={resultVideo === number ? "result-scene-active" : ""} type="button" key={number} onClick={() => setResultVideo(number)} aria-pressed={resultVideo === number}>
                   <span className="result-scene-name">{number}. {videoTitles[number]}</span>
