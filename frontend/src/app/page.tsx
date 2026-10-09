@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
+import { useVideoFiles } from "@/components/VideoFilesProvider";
 
 type WorkContext = {
   company: string;
@@ -15,6 +16,7 @@ const emptyContext: WorkContext = { company: "", worksite: "", task: "" };
 
 export default function Home() {
   const router = useRouter();
+  const { startDemo, startNewEvaluation } = useVideoFiles();
   const [context, setContext] = useState<WorkContext>(emptyContext);
   const [saveError, setSaveError] = useState(false);
 
@@ -43,6 +45,7 @@ export default function Home() {
         ),
       ].slice(0, 8);
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      startNewEvaluation();
       router.push("/upload/1");
     } catch {
       setSaveError(true);
@@ -92,6 +95,7 @@ export default function Home() {
           <button className="next-button" type="submit">다음: 영상 올리기 <span aria-hidden="true">→</span></button>
           {saveError && <p className="form-status form-status-error" role="alert">이 브라우저에 작업 정보를 저장할 수 없습니다. 저장 공간 설정을 확인해 주세요.</p>}
         </form>
+        <button className="demo-entry" type="button" onClick={() => { startDemo(); router.push("/review"); }}>예시 사진으로 화면 둘러보기</button>
     </EvaluationShell>
   );
 }
