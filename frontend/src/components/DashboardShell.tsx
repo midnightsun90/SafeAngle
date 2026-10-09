@@ -8,7 +8,7 @@ import { useVideoFiles } from "@/components/VideoFilesProvider";
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
+  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson, startDemo } = useVideoFiles();
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -161,6 +161,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           {(formError || connectionError) && <p role="alert">{formError || connectionError}</p>}
           <button className="dashboard-modal-submit" type="submit" disabled={saving}>{saving ? "저장 중..." : needsName ? "시작하기" : "평가 시작"} <span aria-hidden="true">→</span></button>
         </form>
+        {needsName && <button className="confirmation-soft-button" type="button" onClick={() => { setCreating(false); startDemo(); router.push("/review"); }}>예시 사진으로 화면 둘러보기 →</button>}
         {!needsName && <button className="dashboard-modal-cancel" type="button" onClick={() => setCreating(false)}>취소</button>}
       </div>
     </div>}
