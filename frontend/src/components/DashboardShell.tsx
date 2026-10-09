@@ -19,7 +19,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const needsName = ready && !dashboard.evaluatorName;
+  const needsName = ready && !dashboard.evaluatorName && !demoMode;
   const modalOpen = needsName || creating;
   const needsVideoAgain = activeEvaluation && ([1, 2, 3] as const).some((number) => activeEvaluation.fileKeys[number] && !files[number]);
 
