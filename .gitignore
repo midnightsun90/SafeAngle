@@ -9,3 +9,4 @@ coverage/
 public/wasm/
 public/models/
 .local/
+.engine-build/

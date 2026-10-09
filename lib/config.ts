@@ -5,6 +5,10 @@ export const DEFAULT_POLICY: Readonly<EnginePolicy> = Object.freeze({
   neckNeutralOffsetDeg: 0, minVisibility: 0.5, frameMargin: 0.02,
   maxHipToTrunkRatio: 0.35, minTrunkToLongSideRatio: 0.07, minUsableRatio: 0.6,
   sampleIntervalSec: 0.1,
+  maxJointSpeedTrunksPerSec: 8,
+  maxSegmentLengthChangeRatio: 0.6,
+  maxSubjectShiftTrunks: 1.5,
+  maxTrackingGapSec: 0.35,
 });
 export function resolvePolicy(overrides: Partial<EnginePolicy> = {}): EnginePolicy {
   for (const key of Object.keys(overrides)) {
@@ -18,5 +22,9 @@ export function resolvePolicy(overrides: Partial<EnginePolicy> = {}): EnginePoli
   numberInRange(policy.minTrunkToLongSideRatio, 0.001, 1, "minTrunkToLongSideRatio");
   numberInRange(policy.minUsableRatio, 0.01, 1, "minUsableRatio");
   numberInRange(policy.sampleIntervalSec, 0.01, 1, "sampleIntervalSec");
+  numberInRange(policy.maxJointSpeedTrunksPerSec, 0.1, 100, "maxJointSpeedTrunksPerSec");
+  numberInRange(policy.maxSegmentLengthChangeRatio, 0.01, 5, "maxSegmentLengthChangeRatio");
+  numberInRange(policy.maxSubjectShiftTrunks, 0.1, 20, "maxSubjectShiftTrunks");
+  numberInRange(policy.maxTrackingGapSec, 0.01, 10, "maxTrackingGapSec");
   return policy;
 }

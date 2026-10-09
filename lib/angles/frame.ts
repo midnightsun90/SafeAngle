@@ -1,4 +1,5 @@
-import type { Angles, EnginePolicy, Facing, FrameSize, JointStatus, Landmark, MeasuredFrame, PoseFrame, Side } from "../types.ts";
+import type { Angles, EnginePolicy, Facing, FrameSize, JointStatus, Landmark, MeasuredFrame, Measurement, PartName, PoseFrame, QualityReason, Side, SideMeasurements } from "../types.ts";
+import { MEASUREMENT_DEFINITIONS, PARTS } from "./definitions.ts";
 import { resolvePolicy } from "../config.ts";
 import { integerInRange, numberInRange } from "../validation.ts";
 
@@ -15,8 +16,10 @@ export function validateSize(size: FrameSize): void {
   numberInRange(size.height, 1, 100_000, "height");
 }
 
-export function jointStatus(point: Landmark, policy: EnginePolicy): JointStatus {
-  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)
+export function jointStatus(point: Landmark | undefined, policy: EnginePolicy): JointStatus {
+  if (!point) return "missing";
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)
+    || (point.z !== undefined && !Number.isFinite(point.z))
     || !Number.isFinite(point.visibility) || point.visibility < 0 || point.visibility > 1) return "invalid";
   if (point.x < policy.frameMargin || point.x > 1 - policy.frameMargin
     || point.y < policy.frameMargin || point.y > 1 - policy.frameMargin) return "out_of_frame";
@@ -24,9 +27,7 @@ export function jointStatus(point: Landmark, policy: EnginePolicy): JointStatus 
 }
 
 function validLandmarks(points: readonly Landmark[]): boolean {
-  return Array.isArray(points) && points.length === 33 && points.every(point => point
-    && Number.isFinite(point.x) && Number.isFinite(point.y)
-    && Number.isFinite(point.visibility) && point.visibility >= 0 && point.visibility <= 1);
+  return Array.isArray(points) && points.length === 33;
 }
 
 type Point = { x: number; y: number };
@@ -60,7 +61,9 @@ export function chooseView(frames: readonly PoseFrame[], options: { side?: Side;
     const visibility = (side: Side) => {
       const j = jointsOf(side);
       return [j.ear, j.shoulder, j.elbow, j.wrist, j.hip, j.knee, j.ankle]
-        .reduce((sum, index) => sum + landmarks[index]!.visibility, 0);
+        .reduce((sum, index) => {
+          const p=landmarks[index];return sum+(p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.visibility)&&p.visibility>=0&&p.visibility<=1?p.visibility:0);
+        }, 0);
     };
     if (visibility("left") >= visibility("right")) leftVotes++;
     else rightVotes++;
@@ -75,7 +78,8 @@ export function chooseView(frames: readonly PoseFrame[], options: { side?: Side;
     if (!validLandmarks(landmarks)) continue;
     const toe = landmarks[j.toe]!;
     const heel = landmarks[j.heel]!;
-    if (toe.visibility < minVisibility || heel.visibility < minVisibility || Math.abs(toe.x - heel.x) < 0.005) continue;
+    const visible=(p:Landmark|undefined)=>!!p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.x<=1&&p.y>=0&&p.y<=1&&Number.isFinite(p.visibility)&&p.visibility<=1&&p.visibility>=minVisibility;
+    if (!visible(toe) || !visible(heel) || Math.abs(toe.x - heel.x) < 0.005) continue;
     if (toe.x > heel.x) rightFacingVotes++;
     else leftFacingVotes++;
   }
@@ -88,46 +92,67 @@ export function measureFrame(frame: PoseFrame, size: FrameSize, side: Side, faci
   if (frame.personCount !== undefined) integerInRange(frame.personCount, 0, 100, "personCount");
   validateSize(size);
   const policy = resolvePolicy(overrides);
-  const j = jointsOf(side);
+  jointsOf(side);
   if (facing !== null && facing !== 1 && facing !== -1) throw new TypeError("facing: 올바르지 않은 방향입니다.");
-  const result: MeasuredFrame = { timeSec: frame.timeSec, usable: false, reasons: [], angles: null, wristReliable: false };
   const points = frame.landmarks;
-  if (frame.personCount === 0) { result.reasons.push("no_person"); return result; }
-  if (frame.personCount !== undefined && frame.personCount > 1) { result.reasons.push("multiple_people"); return result; }
-  if (Array.isArray(points) && points.length === 0) { result.reasons.push("no_person"); return result; }
-  if (!validLandmarks(points)) { result.reasons.push("invalid_landmarks"); return result; }
-  const required = [j.ear, j.shoulder, j.elbow, j.wrist, j.hip, j.knee, j.ankle];
-  if (required.some(index => points[index]!.visibility < policy.minVisibility)) result.reasons.push("occluded");
-  const inside = (index: number) => {
-    const point = points[index]!;
-    return point.x >= policy.frameMargin && point.x <= 1 - policy.frameMargin
-      && point.y >= policy.frameMargin && point.y <= 1 - policy.frameMargin;
-  };
-  if (required.some(index => !inside(index))) result.reasons.push("out_of_frame");
-  const p = (index: number) => pixel(points[index]!, size);
-  const shoulder = p(j.shoulder), hip = p(j.hip), elbow = p(j.elbow), wrist = p(j.wrist);
-  const trunkLength = length(shoulder, hip);
-  if (trunkLength < 1e-8 || length(p(j.ear), shoulder) < 1e-8 || length(shoulder, elbow) < 1e-8) {
-    result.reasons.push("invalid_geometry");
-  } else {
-    if (points[23]!.visibility >= policy.minVisibility && points[24]!.visibility >= policy.minVisibility
-      && length(p(23), p(24)) / trunkLength > policy.maxHipToTrunkRatio) result.reasons.push("not_side_view");
-    if (trunkLength / Math.max(size.width, size.height) < policy.minTrunkToLongSideRatio) result.reasons.push("too_far");
+  const personCount = frame.personCount ?? (points.length ? 1 : 0);
+  const global: QualityReason[] = [];
+  if (personCount === 0) global.push("no_person");
+  else if (personCount > 1) global.push("multiple_people");
+  else if (!validLandmarks(points)) global.push("invalid_landmarks");
+  const reliable = (index: number) => jointStatus(points[index], policy) === "reliable";
+  if (!global.length) {
+    const trunkLengths = (["left","right"] as const).flatMap(at => {
+      const j = jointsOf(at);
+      return reliable(j.shoulder) && reliable(j.hip) ? [length(pixel(points[j.shoulder]!,size),pixel(points[j.hip]!,size))] : [];
+    });
+    const trunkLength = trunkLengths.length ? Math.max(...trunkLengths) : null;
+    if (trunkLength !== null && trunkLength > 1e-8) {
+      if (trunkLength / Math.max(size.width,size.height) < policy.minTrunkToLongSideRatio) global.push("too_far");
+      if (reliable(23) && reliable(24) && length(pixel(points[23]!,size),pixel(points[24]!,size))/trunkLength > policy.maxHipToTrunkRatio) global.push("not_side_view");
+    }
   }
-  if (facing === null) result.reasons.push("unknown_direction");
-  if (result.reasons.length || facing === null) return result;
-
-  const radiansToDegrees = 180 / Math.PI;
-  const trunk = Math.atan2(facing * (shoulder.x - hip.x), -(shoulder.y - hip.y)) * radiansToDegrees;
-  const ear = p(j.ear);
-  const neck = wrap(Math.atan2(facing * (ear.x - shoulder.x), -(ear.y - shoulder.y)) * radiansToDegrees
-    - trunk - policy.neckNeutralOffsetDeg, -180);
-  const upperArm = wrap(Math.atan2(facing * (elbow.x - shoulder.x), elbow.y - shoulder.y) * radiansToDegrees + trunk, -90);
-  const knee = flexion(hip, p(j.knee), p(j.ankle));
-  const lowerArm = flexion(shoulder, elbow, wrist);
-  if (knee === null || lowerArm === null) { result.reasons.push("invalid_geometry"); return result; }
-  const wristAngle = points[j.index]!.visibility >= policy.minVisibility && inside(j.index)
-    ? flexion(elbow, wrist, p(j.index)) : null;
-  const angles: Angles = { trunk: trunk === 0 ? 0 : trunk, neck, knee, upperArm, lowerArm, wrist: wristAngle };
-  return { ...result, usable: true, angles, wristReliable: wristAngle !== null };
+  const measureSide = (at: Side): SideMeasurements => {
+    const j = jointsOf(at);
+    const p = (index: number) => pixel(points[index]!,size);
+    const degrees = 180 / Math.PI;
+    const trunk = () => Math.atan2(facing! * (p(j.shoulder).x-p(j.hip).x),-(p(j.shoulder).y-p(j.hip).y))*degrees;
+    const specs: Record<PartName,{joints:number[];signed:boolean;calculate:()=>number|null}> = {
+      trunk:{joints:[j.hip,j.shoulder],signed:true,calculate:trunk},
+      neck:{joints:[j.hip,j.shoulder,j.ear],signed:true,calculate:()=>wrap(Math.atan2(facing!*(p(j.ear).x-p(j.shoulder).x),-(p(j.ear).y-p(j.shoulder).y))*degrees-trunk()-policy.neckNeutralOffsetDeg,-180)},
+      upperArm:{joints:[j.hip,j.shoulder,j.elbow],signed:true,calculate:()=>wrap(Math.atan2(facing!*(p(j.elbow).x-p(j.shoulder).x),p(j.elbow).y-p(j.shoulder).y)*degrees+trunk(),-90)},
+      lowerArm:{joints:[j.shoulder,j.elbow,j.wrist],signed:false,calculate:()=>flexion(p(j.shoulder),p(j.elbow),p(j.wrist))},
+      knee:{joints:[j.hip,j.knee,j.ankle],signed:false,calculate:()=>flexion(p(j.hip),p(j.knee),p(j.ankle))},
+      wrist:{joints:[j.elbow,j.wrist,j.index],signed:false,calculate:()=>flexion(p(j.elbow),p(j.wrist),p(j.index))},
+    };
+    return Object.fromEntries(PARTS.map(part=>{
+      const spec=specs[part]; const reasons:QualityReason[]=[...global];
+      if (!global.length) {
+        for (const index of spec.joints) {
+          const status=jointStatus(points[index],policy);
+          const reason = status === "missing" ? "missing_joint" : status === "invalid" ? "invalid_landmarks"
+            : status === "occluded" ? "occluded" : status === "out_of_frame" ? "out_of_frame" : null;
+          if(reason&&!reasons.includes(reason))reasons.push(reason);
+        }
+        if(spec.signed&&facing===null)reasons.push("unknown_direction");
+        if(!reasons.length && spec.joints.slice(1).some((index,i)=>length(p(spec.joints[i]!),p(index))<1e-8))reasons.push("invalid_geometry");
+      }
+      let value = reasons.length ? null : spec.calculate();
+      if(value===null&&!reasons.length)reasons.push("invalid_geometry");
+      if(value!==null&&!Number.isFinite(value)){value=null;reasons.push("invalid_geometry");}
+      if(Object.is(value,-0))value=0;
+      const confidences=spec.joints.map(index=>points[index]?.visibility).filter((v):v is number=>typeof v==="number"&&Number.isFinite(v)&&v>=0&&v<=1);
+      const measurement:Measurement={value,status:value===null?"unavailable":"measured",reasons,joints:spec.joints,
+        minVisibility:confidences.length===spec.joints.length?Math.min(...confidences):null,approximate:MEASUREMENT_DEFINITIONS[part].approximate};
+      return [part,measurement];
+    })) as SideMeasurements;
+  };
+  const measurements={left:measureSide("left"),right:measureSide("right")};
+  const selected=measurements[side];
+  const compatible=PARTS.filter(part=>part!=="wrist").every(part=>selected[part].value!==null);
+  const angles=compatible?Object.fromEntries(PARTS.map(part=>[part,selected[part].value])) as unknown as Angles:null;
+  const all=[...Object.values(measurements.left),...Object.values(measurements.right)];
+  const measuredCount=all.filter(value=>value.value!==null).length;
+  return {timeSec:frame.timeSec,usable:compatible,reasons:[...new Set(all.flatMap(value=>value.reasons))],
+    angles,wristReliable:selected.wrist.value!==null,status:measuredCount===all.length?"complete":measuredCount?"partial":"unusable",measurements,personCount};
 }

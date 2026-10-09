@@ -2,13 +2,17 @@ import type { PoseLandmarker } from "@mediapipe/tasks-vision";
 import type { Analysis, AnalysisOptions, PoseFrame } from "../types.ts";
 import { analyzePoses } from "../analysis.ts";
 import { resolvePolicy } from "../config.ts";
+import { waitForLoad, waitForTask } from "./loading.ts";
 
 export interface VideoOptions extends AnalysisOptions {
   signal?: AbortSignal;
   onProgress?: (processed: number, total: number) => void;
+  onState?: (state: "decoding" | "loading-model" | "analyzing" | "measuring") => void;
 }
 export interface VideoAnalysis extends Analysis {
-  runtime: { modelPath: string; delegate: "GPU" | "CPU"; elapsedMs: number; inferenceMs: number };
+  runtime: { modelPath: string; modelVersion: string; packageVersion: string; startedAt: string;
+    delegate: "GPU" | "CPU"; elapsedMs: number; inferenceMs: number; maxFrameInferenceMs: number;
+    timestampSource: "seek_position" };
 }
 
 function waitFor(video: HTMLVideoElement, event: string, act: () => void, signal?: AbortSignal): Promise<void> {
@@ -40,6 +44,7 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
   const modelPath = "/models/pose_landmarker_full.task";
   const wasmPath = "/wasm";
   const start = performance.now();
+  const startedAt = new Date().toISOString();
   const video = document.createElement("video");
   video.preload = "auto";
   video.muted = true;
@@ -50,13 +55,16 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
   const url = URL.createObjectURL(file);
   let detector: PoseLandmarker | undefined;
   try {
+    options.signal?.throwIfAborted();
+    options.onState?.("decoding");
     await waitFor(video, "loadeddata", () => { video.src = url; video.load(); }, options.signal);
     if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 60) {
       throw new RangeError("0초 초과, 60초 이하의 영상으로 잘라 주십시오.");
     }
     options.signal?.throwIfAborted();
-    const { PoseLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-    const fileset = await FilesetResolver.forVisionTasks(wasmPath);
+    options.onState?.("loading-model");
+    const { PoseLandmarker, FilesetResolver } = await waitForLoad(import("@mediapipe/tasks-vision"),options.signal);
+    const fileset = await waitForLoad(FilesetResolver.forVisionTasks(wasmPath),options.signal);
     options.signal?.throwIfAborted();
     const create = (delegate: "GPU" | "CPU") => PoseLandmarker.createFromOptions(fileset, {
       baseOptions: { modelAssetPath: modelPath, delegate }, runningMode: "VIDEO", numPoses: 2,
@@ -64,17 +72,19 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
       outputSegmentationMasks: false,
     });
     let delegate: "GPU" | "CPU" = "GPU";
-    try { detector = await create(delegate); }
+    try { detector = await waitForTask(create(delegate), options.signal); }
     catch (gpuError) {
       options.signal?.throwIfAborted();
       delegate = "CPU";
-      try { detector = await create(delegate); }
-      catch (cpuError) { throw new AggregateError([gpuError, cpuError], "포즈 모델을 불러오지 못했습니다. 모델과 WASM 경로를 확인하십시오."); }
+      try { detector = await waitForTask(create(delegate), options.signal); }
+      catch (cpuError) { options.signal?.throwIfAborted();throw new AggregateError([gpuError, cpuError], "포즈 모델을 불러오지 못했습니다. 모델과 WASM 경로를 확인하십시오."); }
     }
     const frames: PoseFrame[] = [];
-    let inferenceMs = 0, lastTimestamp = -1;
+    let inferenceMs = 0, maxFrameInferenceMs = 0, lastTimestamp = -1;
     const total = Math.max(1, Math.ceil(video.duration / policy.sampleIntervalSec));
     options.onProgress?.(0, total);
+    options.signal?.throwIfAborted();
+    options.onState?.("analyzing");
     for (let index = 0; index < total; index++) {
       options.signal?.throwIfAborted();
       const target = index * policy.sampleIntervalSec;
@@ -87,8 +97,12 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
       lastTimestamp = timeSec * 1000;
       const before = performance.now();
       // shortcut: inference blocks the main thread; move to a worker if measured UI stalls are excessive.
-      const result = detector.detectForVideo(video, lastTimestamp);
-      inferenceMs += performance.now() - before;
+      let result: ReturnType<PoseLandmarker["detectForVideo"]>;
+      try { result = detector.detectForVideo(video, lastTimestamp); }
+      catch(error) { throw new Error("포즈 추론에 실패했습니다. Chrome의 그래픽 가속을 켜거나 다른 노트북에서 시도하십시오.",{cause:error}); }
+      const elapsed = performance.now() - before;
+      inferenceMs += elapsed;
+      maxFrameInferenceMs = Math.max(maxFrameInferenceMs, elapsed);
       try {
         frames.push({ timeSec, personCount: result.landmarks.length,
           landmarks: result.landmarks.length === 1 ? result.landmarks[0]!.map(point => ({ ...point })) : [] });
@@ -96,14 +110,17 @@ export async function analyzeVideo(file: File, options: VideoOptions = {}): Prom
       options.onProgress?.(index + 1, total);
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
+    options.signal?.throwIfAborted();
+    options.onState?.("measuring");
     const analysis = analyzePoses(frames, { width: video.videoWidth, height: video.videoHeight }, options);
-    return { ...analysis, runtime: { modelPath, delegate, elapsedMs: performance.now() - start, inferenceMs } };
+    return { ...analysis, durationSec: video.duration, sampleIntervalSec: policy.sampleIntervalSec,
+      runtime: { modelPath,modelVersion:"full/float16/1",packageVersion:"0.10.34",startedAt,
+        delegate,elapsedMs:performance.now()-start,inferenceMs,maxFrameInferenceMs,timestampSource:"seek_position" } };
   } finally {
-    detector?.close();
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-    video.remove();
-    URL.revokeObjectURL(url);
+    try { detector?.close(); }
+    finally {
+      try { video.pause();video.removeAttribute("src");video.load(); }
+      finally { video.remove();URL.revokeObjectURL(url); }
+    }
   }
 }
