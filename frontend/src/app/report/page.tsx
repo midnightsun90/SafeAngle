@@ -45,8 +45,8 @@ function ReferenceTable({ title, description, data, rowLabel, columnLabels, grou
 }
 
 export default function ReportPage() {
-  const { demoMode, resultVideo, selectedTimes, answers } = useVideoFiles();
-  const sampleDetails = demoMode && resultVideo === 1;
+  const { demoMode, confirmedScenes, resultVideo, selectedTimes, answers } = useVideoFiles();
+  const sampleDetails = demoMode && confirmedScenes[resultVideo] && resultVideo === 1;
   const time = demoMode ? sampleResults[resultVideo].time : selectedTimes[resultVideo] !== null ? formatVideoTime(selectedTimes[resultVideo] ?? 0) : "미선택";
   const answer = (key: string) => {
     const value = answers[resultVideo][key];
@@ -71,7 +71,7 @@ export default function ReportPage() {
   const rows = sampleDetails ? sampleRows : realRows;
 
   return (
-    <EvaluationShell step="06" stepName="상세 평가서" title="REBA 상세 평가서" wide introFull beforeIntro={<div className="report-topline">
+    <EvaluationShell step="08" stepName="상세 평가서" title="REBA 상세 평가서" wide introFull beforeIntro={<div className="report-topline">
         <Link href="/results">← 결과 요약으로</Link>
         {demoMode && <span className="sample-badge">시안용 예시</span>}
       </div>}>

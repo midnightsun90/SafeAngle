@@ -72,9 +72,8 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
 
     if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/") && activeEvaluation.lastPath !== "/evaluation") {
       const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index]));
-      const readyToResume = activeEvaluation.lastPath.startsWith("/questions/")
-        ? selectedTimes[Number(activeEvaluation.lastPath.split("/")[2]) as VideoNumber] !== null
-        : activeEvaluation.lastPath === "/review" || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
+      const beforeSceneSelection = activeEvaluation.lastPath.startsWith("/questions/") || ["/review", "/analysis", "/confirmation"].includes(activeEvaluation.lastPath);
+      const readyToResume = beforeSceneSelection || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
       if (allFilesReady && readyToResume) { router.push(activeEvaluation.lastPath); return; }
     }
     router.push(config.nextPath);

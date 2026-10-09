@@ -15,6 +15,11 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (video && video.readyState >= 1 && selectedTime !== null) video.currentTime = selectedTime;
+  }, [selectedTime]);
+
+  useEffect(() => {
     if (!file || demoMode) return;
     const url = URL.createObjectURL(file);
     setVideoUrl(url);

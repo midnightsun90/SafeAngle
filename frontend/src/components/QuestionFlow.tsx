@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
@@ -10,17 +10,18 @@ import { questionGroups, type QuestionGroup } from "@/lib/questions";
 
 export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber: VideoNumber; groupNumber: QuestionGroup }) {
   const router = useRouter();
-  const { files, selectedTimes, answers, demoMode, setAnswer, activeVideos } = useVideoFiles();
+  const { files, answers, demoMode, setAnswer, activeVideos } = useVideoFiles();
   const [error, setError] = useState("");
-  const group = questionGroups[groupNumber];
+  useEffect(() => { if (groupNumber === 1) router.replace(`/questions/${videoNumber}/2`); }, [groupNumber, videoNumber, router]);
+  const group = questionGroups[groupNumber === 1 ? 2 : groupNumber];
   const values = answers[videoNumber];
-  const ready = activeVideos.includes(videoNumber) && (demoMode || (files[videoNumber] && selectedTimes[videoNumber] !== null));
+  const ready = activeVideos.includes(videoNumber) && (demoMode || files[videoNumber]);
   const nextVideo = activeVideos.find((number) => number > videoNumber);
 
   function continueToNext(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!ready) {
-      setError(`영상 ${videoNumber}의 평가 장면을 먼저 선택해 주세요.`);
+      setError(`영상 ${videoNumber}을 먼저 올려주세요.`);
       return;
     }
     const missing = group.questions.find((question) => !values[question.key]);
@@ -31,22 +32,22 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
     }
     setError("");
     if (groupNumber < 4) router.push(`/questions/${videoNumber}/${groupNumber + 1}`);
-    else if (nextVideo) router.push(`/questions/${nextVideo}/1`);
+    else if (nextVideo) router.push(`/questions/${nextVideo}/2`);
     else router.push("/analysis");
   }
 
   return (
     <EvaluationShell
       step="04"
-      stepName="사람 확인"
-      eyebrow={`04 / 06 · 영상 ${videoNumber} / 3 · Q${groupNumber} ${group.name}`}
+      stepName="작업 조건 입력"
+      eyebrow={`04 / 08 · 영상 ${videoNumber} / 3 · Q${groupNumber} ${group.name}`}
       title={group.title}
       description={group.description}
       media={<ScenePreview number={videoNumber} />}
       wide
     >
       {demoMode && <p className="demo-disclaimer">예시 사진으로 보는 질문 화면입니다. 답변과 사진으로 실제 점수를 계산하지 않습니다.</p>}
-      {!ready && <p className="question-warning">평가 장면이 없습니다. <Link href="/review">영상 확인 화면으로 돌아가기</Link></p>}
+      {!ready && <p className="question-warning">작업 영상이 없습니다. <Link href="/review">영상 확인 화면으로 돌아가기</Link></p>}
       <form className="question-form" onSubmit={continueToNext} noValidate>
         <div className="question-grid">
           {group.questions.map((question) => (

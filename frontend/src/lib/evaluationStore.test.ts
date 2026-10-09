@@ -63,3 +63,16 @@ test("DB 대상자 목록을 복원하면서 이 브라우저의 기존 답변�
   assert.deepEqual(merged.evaluations.map((item) => item.name), ["새 대상자", "DB 이름"]);
   assert.equal(merged.evaluations[1].answers[1].load, "5");
 });
+
+test("추천 장면 확인 상태는 대상자별로 보존하고 예전 저장값은 미확인으로 읽는다", () => {
+  const first = updateEvaluation(addEvaluation(createDashboardState("관리자"), "A", "first"), "first", (item) => ({
+    ...item, lastPath: "/confirmation", confirmedScenes: { ...item.confirmedScenes, 1: true },
+  }));
+  const second = addEvaluation(first, "B", "second");
+  const restored = readDashboardState(JSON.stringify(second));
+  assert.equal(restored?.evaluations.find((item) => item.id === "first")?.confirmedScenes[1], true);
+  assert.equal(restored?.evaluations.find((item) => item.id === "second")?.confirmedScenes[1], false);
+  const legacy = JSON.parse(JSON.stringify(first));
+  delete legacy.evaluations[0].confirmedScenes;
+  assert.deepEqual(readDashboardState(JSON.stringify(legacy))?.evaluations[0].confirmedScenes, { 1: false, 2: false, 3: false });
+});

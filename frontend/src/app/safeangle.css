@@ -483,3 +483,12 @@
   .report-item-table { min-width: 650px; }
   .report-formula { grid-template-columns: 1fr; gap: 13px; }
 }
+
+.confirmation-content { max-width: 720px; margin: 32px auto; line-height: 1.6; }
+.confirmation-content > h2 { font-size: 20px; }
+.confirmation-content > .scene-preview { max-width: 614px; }
+.confirmation-conditions { margin: 24px 0; font-size: 14px; }
+.confirmation-conditions > div { border-bottom: 1px solid var(--line); padding: 12px 0; }
+.confirmation-conditions dt { font-weight: 600; }
+.confirmation-conditions dd { margin: 4px 0 0; color: var(--muted); }
+.next-button:disabled { background: #e5e7eb; color: #6b7280; cursor: not-allowed; }

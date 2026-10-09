@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber, type WorkContext } from "@/lib/evaluationStore";
 import { supabase } from "@/lib/supabaseClient";
+import { workQuestionKeys } from "@/lib/questions";
 
 export type { VideoNumber } from "@/lib/evaluationStore";
 type VideoFiles = Record<VideoNumber, File | null>;
@@ -15,6 +16,8 @@ type ContextValue = {
   files: VideoFiles; selectedTimes: Record<VideoNumber, number | null>;
   answers: Record<VideoNumber, Record<string, string>>; skipped: Record<VideoNumber, boolean>;
   activeVideos: VideoNumber[]; demoMode: boolean; resultVideo: VideoNumber;
+  confirmedScenes: Record<VideoNumber, boolean>;
+  confirmScene: (number: VideoNumber) => void;
   setEvaluatorName: (name: string) => Promise<void>; addPerson: (name: string) => Promise<void>;
   logOut: () => Promise<void>;
   selectPerson: (id: string) => string; setWork: (work: WorkContext) => void; savePath: (path: string) => void;
@@ -35,6 +38,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const [filesByPerson, setFilesByPerson] = useState<Record<string, VideoFiles>>({});
   const [demoAnswers, setDemoAnswers] = useState(emptyAnswers);
   const [demoTimes, setDemoTimes] = useState(emptyTimes);
+  const [demoConfirmed, setDemoConfirmed] = useState<Record<VideoNumber, boolean>>({ 1: false, 2: false, 3: false });
   const [demoMode, setDemoMode] = useState(false);
   const [resultVideo, setResultVideo] = useState<VideoNumber>(1);
 
@@ -101,6 +105,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   const files = activeEvaluation ? filesByPerson[activeEvaluation.id] ?? emptyFiles() : emptyFiles();
   const selectedTimes = activeEvaluation ? activeEvaluation.selectedTimes : demoTimes;
   const answers = activeEvaluation ? activeEvaluation.answers : demoAnswers;
+  const confirmedScenes = activeEvaluation ? activeEvaluation.confirmedScenes : demoConfirmed;
   const skipped = activeEvaluation ? activeEvaluation.skipped : { 1: false, 2: false, 3: false };
   const activeVideos = ([1, 2, 3] as const).filter((number) => demoMode || !skipped[number]);
 
@@ -144,6 +149,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setFilesByPerson({});
     setDemoAnswers(emptyAnswers());
     setDemoTimes(emptyTimes());
+    setDemoConfirmed({ 1: false, 2: false, 3: false });
     setDemoMode(false);
     setResultVideo(1);
     setConnectionError("");
@@ -188,6 +194,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
         skipped: { ...item.skipped, [number]: false },
         selectedTimes: sameFile ? item.selectedTimes : { ...item.selectedTimes, [number]: null },
         answers: sameFile ? item.answers : { ...item.answers, [number]: {} },
+        confirmedScenes: sameFile ? item.confirmedScenes : { ...item.confirmedScenes, [number]: false },
       };
     }));
   }
@@ -201,34 +208,57 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
       fileKeys: { ...item.fileKeys, [number]: null },
       selectedTimes: { ...item.selectedTimes, [number]: null },
       answers: { ...item.answers, [number]: {} },
+      confirmedScenes: { ...item.confirmedScenes, [number]: false },
     })));
     if (resultVideo === number) setResultVideo(([1, 2, 3] as const).find((candidate) => candidate !== number && !skipped[candidate]) ?? 1);
   }
 
   function setSelectedTime(number: VideoNumber, time: number) {
-    if (!dashboard.activeId) { setDemoTimes((current) => ({ ...current, [number]: time })); return; }
+    if (!dashboard.activeId) {
+      setDemoTimes((current) => ({ ...current, [number]: time }));
+      if (demoTimes[number] !== time) {
+        setDemoAnswers((current) => ({ ...current, [number]: Object.fromEntries(Object.entries(current[number]).filter(([key]) => workQuestionKeys.includes(key))) }));
+        setDemoConfirmed((current) => ({ ...current, [number]: false }));
+      }
+      return;
+    }
     const id = dashboard.activeId;
     setDashboard((current) => updateEvaluation(current, id, (item) => ({ ...item,
       selectedTimes: { ...item.selectedTimes, [number]: time },
-      answers: item.selectedTimes[number] === time ? item.answers : { ...item.answers, [number]: {} },
+      answers: item.selectedTimes[number] === time ? item.answers : { ...item.answers, [number]: Object.fromEntries(Object.entries(item.answers[number]).filter(([key]) => workQuestionKeys.includes(key))) },
+      confirmedScenes: item.selectedTimes[number] === time ? item.confirmedScenes : { ...item.confirmedScenes, [number]: false },
     })));
   }
 
   function setAnswer(number: VideoNumber, key: string, value: string) {
-    if (!dashboard.activeId) { setDemoAnswers((current) => ({ ...current, [number]: { ...current[number], [key]: value } })); return; }
+    if (!dashboard.activeId) {
+      setDemoAnswers((current) => ({ ...current, [number]: { ...current[number], [key]: value } }));
+      setDemoConfirmed((current) => ({ ...current, [number]: false }));
+      return;
+    }
     const id = dashboard.activeId;
     setDashboard((current) => updateEvaluation(current, id, (item) => ({ ...item,
       answers: { ...item.answers, [number]: { ...item.answers[number], [key]: value } },
+      confirmedScenes: { ...item.confirmedScenes, [number]: false },
     })));
   }
 
   function startDemo() {
+    setDemoConfirmed({ 1: false, 2: false, 3: false });
     setDashboard((current) => ({ ...current, activeId: null }));
     setDemoAnswers(emptyAnswers()); setDemoTimes(emptyTimes()); setDemoMode(true); setResultVideo(1);
   }
 
+  function confirmScene(number: VideoNumber) {
+    if (!dashboard.activeId) { setDemoConfirmed((current) => ({ ...current, [number]: true })); return; }
+    const id = dashboard.activeId;
+    setDashboard((current) => updateEvaluation(current, id, (item) => ({ ...item,
+      confirmedScenes: { ...item.confirmedScenes, [number]: true },
+    })));
+  }
+
   return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
-    skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, setWork, savePath, setFile, skipVideo, setSelectedTime,
+    confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, setWork, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }
 

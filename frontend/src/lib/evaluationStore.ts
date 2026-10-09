@@ -10,6 +10,7 @@ export type Evaluation = {
   answers: Record<VideoNumber, Record<string, string>>;
   skipped: Record<VideoNumber, boolean>;
   fileKeys: Record<VideoNumber, string | null>;
+  confirmedScenes: Record<VideoNumber, boolean>;
 };
 export type DashboardState = {
   evaluatorName: string;
@@ -40,6 +41,7 @@ export function addEvaluation(state: DashboardState, name: string, id: string): 
     answers: { 1: {}, 2: {}, 3: {} },
     skipped: { 1: false, 2: false, 3: false },
     fileKeys: { 1: null, 2: null, 3: null },
+    confirmedScenes: { 1: false, 2: false, 3: false },
   };
   return { ...state, activeId: id, evaluations: [evaluation, ...state.evaluations] };
 }
@@ -85,7 +87,11 @@ export function readDashboardState(raw: string | null): DashboardState | null {
       evaluatorName: candidate.evaluatorName,
       activeId: typeof candidate.activeId === "string" && evaluations.some((item) => item.id === candidate.activeId)
         ? candidate.activeId : null,
-      evaluations,
+      evaluations: evaluations.map((item) => ({ ...item, confirmedScenes: {
+        1: item.confirmedScenes?.[1] === true,
+        2: item.confirmedScenes?.[2] === true,
+        3: item.confirmedScenes?.[3] === true,
+      } })),
     };
   } catch {
     return null;

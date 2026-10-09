@@ -226,4 +226,10 @@ AI 전송 동의는 영상 선택과 별도로 받습니다. 동의가 없거나
 - [OpenAI Responses API](https://developers.openai.com/api/reference/responses/overview), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [해커톤 안내](https://luma.com/f7h7onav), [상세 규정](https://codex-community-korea.skysplit.chatgpt.site/hackathon/seoul-2026-10)
 
-엔진 실행 준비와 검증 상태는 [관절 추적 엔진 MVP](docs/ENGINE.md)에 있습니다. 전체 웹 앱의 실행 명령과 배포 주소는 프론트엔드 연결 후 추가합니다.
+엔진 실행 준비와 검증 상태는 [관절 추적 엔진 MVP](docs/ENGINE.md)에 있습니다.
+
+프론트엔드 초안은 `frontend`에서 `npm.cmd install` 후 `npm.cmd run dev -- --port 3002`로 실행합니다. 3번은 영상 확인, 4번은 Q2~Q4 작업 조건 입력, 5번은 자세 분석 대기, 6번은 추천 장면 확인 화면입니다. 첫 화면의 예시 모드에서 6번의 장면 선택·불확실한 항목 확인·측정 불가 처리를 확인할 수 있습니다. 실제 업로드 영상에 대한 분석·추천·채점 엔진 연결은 아직 미완료이며 임의의 결과를 표시하지 않습니다. 직접 선택한 새 장면도 재분석 전에는 평가할 수 없습니다. 장면을 바꾸면 장면별 확인을 초기화하고 작업 조건은 유지합니다. 확인 불가인 필수 항목이 있으면 점수를 확정하지 않습니다.
+
+이 흐름은 Chrome에서 실제 파일 선택·작업 건너뛰기·Q2~Q4 입력과 예시 모드의 6번 확인 절차를 검증했으며 TypeScript 검사와 정적 배포 빌드를 통과했습니다. 실제 작업 자세의 추천 품질과 REBA 점수 정확도 검증은 포함하지 않습니다.
+
+대시보드 통합에서는 기존 평가자·대상자 목록·로그아웃과 DB 연결 방식을 유지합니다. 회사·작업 정보는 `/evaluation`에서 입력하며, 추천 장면 확인 상태도 대상자별로 보관합니다. 기존 브라우저 저장값에 확인 상태가 없으면 미확인으로 복원합니다. DB 모의 응답을 사용한 Chrome 점검에서 대상자별 입력 분리·새로고침 후 영상 재선택 안내·6번 확인 화면·로그아웃을 확인했습니다. 이번 통합에서 실제 Supabase 저장 동작을 새로 검증한 것은 아닙니다.
