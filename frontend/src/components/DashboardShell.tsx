@@ -41,7 +41,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     };
   }, [profileMenu]);
   useEffect(() => {
-    if (ready && dashboard.evaluatorName && pathname !== "/" && !activeEvaluation && !demoMode) router.replace("/");
+    if (ready && dashboard.evaluatorName && pathname !== "/" && !pathname.startsWith("/output-preview") && !activeEvaluation && !demoMode) router.replace("/");
   }, [ready, dashboard.evaluatorName, pathname, activeEvaluation, demoMode, router]);
 
   async function submitName(event: FormEvent<HTMLFormElement>) {
@@ -95,6 +95,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   if (!ready) return <div className="dashboard-loading">SafeAngle</div>;
+  if (pathname.startsWith("/output-preview")) return <>{children}</>;
 
   return <div className={`dashboard-shell${expanded ? "" : " dashboard-shell-collapsed"}${modalOpen ? " dashboard-shell-modal" : ""}`}>
     {mobileOpen && <button className="dashboard-backdrop" type="button" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)} />}
