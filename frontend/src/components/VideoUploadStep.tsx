@@ -70,7 +70,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
       return;
     }
 
-    if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/") && activeEvaluation.lastPath !== "/evaluation") {
+    if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/")) {
       const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index]));
       const beforeSceneSelection = activeEvaluation.lastPath.startsWith("/questions/") || ["/review", "/analysis", "/confirmation"].includes(activeEvaluation.lastPath);
       const readyToResume = beforeSceneSelection || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
@@ -80,7 +80,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   }
 
   return (
-    <EvaluationShell step="02" stepName="영상 올리기" title={config.title}>
+    <EvaluationShell step="01" stepName="영상 올리기" title={config.title}>
       <section className="upload-content" aria-label={`영상 ${number} 올리기`}>
         <div className="shooting-guide">
           <p className="filming-notice">{filmingNotice}</p>

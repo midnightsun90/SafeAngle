@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber, type WorkContext } from "@/lib/evaluationStore";
+import { addEvaluation, createDashboardState, dashboardStorageKey, fileIdentity, mergeStoredPeople, readDashboardState, updateEvaluation, type DashboardState, type Evaluation, type StoredPerson, type VideoNumber } from "@/lib/evaluationStore";
 import { supabase } from "@/lib/supabaseClient";
 import { workQuestionKeys } from "@/lib/questions";
 
@@ -20,7 +20,7 @@ type ContextValue = {
   confirmScene: (number: VideoNumber) => void;
   setEvaluatorName: (name: string) => Promise<void>; addPerson: (name: string) => Promise<void>;
   logOut: () => Promise<void>;
-  selectPerson: (id: string) => string; setWork: (work: WorkContext) => void; savePath: (path: string) => void;
+  selectPerson: (id: string) => string; savePath: (path: string) => void;
   setFile: (number: VideoNumber, file: File) => void; skipVideo: (number: VideoNumber) => void;
   setSelectedTime: (number: VideoNumber, time: number) => void;
   setAnswer: (number: VideoNumber, key: string, value: string) => void;
@@ -162,14 +162,8 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
     setDemoMode(false);
     setResultVideo(([1, 2, 3] as const).find((number) => !person.skipped[number]) ?? 1);
     const retained = filesByPerson[id] ?? emptyFiles();
-    if (person.lastPath !== "/evaluation" && [1, 2, 3].some((number) => person.fileKeys[number as VideoNumber] && !retained[number as VideoNumber])) return "/upload/1";
-    return person.lastPath;
-  }
-
-  function setWork(work: WorkContext) {
-    if (!dashboard.activeId) return;
-    const id = dashboard.activeId;
-    setDashboard((current) => updateEvaluation(current, id, (item) => ({ ...item, work })));
+    if ([1, 2, 3].some((number) => person.fileKeys[number as VideoNumber] && !retained[number as VideoNumber])) return "/upload/1";
+    return person.lastPath === "/evaluation" ? "/upload/1" : person.lastPath;
   }
 
   function savePath(path: string) {
@@ -258,7 +252,7 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
   }
 
   return <VideoFilesContext.Provider value={{ dashboard, ready, storageError, connectionError, activeEvaluation, files, selectedTimes, answers,
-    confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, setWork, savePath, setFile, skipVideo, setSelectedTime,
+    confirmedScenes, confirmScene, skipped, activeVideos, demoMode, resultVideo, setEvaluatorName, addPerson, logOut, selectPerson, savePath, setFile, skipVideo, setSelectedTime,
     setAnswer, startDemo, setResultVideo }}>{children}</VideoFilesContext.Provider>;
 }
 

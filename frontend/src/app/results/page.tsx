@@ -9,7 +9,6 @@ import { sampleResults, videoTitles } from "@/lib/resultData";
 
 export default function ResultsPage() {
   const { demoMode, confirmedScenes, activeEvaluation, files, selectedTimes, answers, resultVideo, setResultVideo, activeVideos } = useVideoFiles();
-  const work = activeEvaluation?.work;
 
   const numbers: VideoNumber[] = activeVideos;
   const showSample = demoMode && numbers.length > 0 && numbers.every((number) => confirmedScenes[number]);
@@ -17,9 +16,9 @@ export default function ResultsPage() {
   const incompleteAnswers = numbers.filter((number) => Object.values(answers[number]).includes("unknown"));
 
   return (
-    <EvaluationShell step="07" stepName="결과 요약" title="작업 자세 평가 결과" wide introFull>
+    <EvaluationShell step="06" stepName="결과 요약" title="작업 자세 평가 결과" wide introFull>
       <div className="results-topline">
-        <p>{demoMode ? "회사명 · 작업장명 · 공정명" : work ? `${work.company} · ${work.worksite} · ${work.task}` : "작업 정보 미입력"}</p>
+        <p>{demoMode ? "예시 평가" : activeEvaluation?.name ?? "평가 대상자 미선택"}</p>
         {demoMode && <span className="sample-badge">시안용 예시</span>}
       </div>
       <p className="results-disclaimer">{demoMode ? "아래 점수는 디자인 시안의 예시입니다. 사진을 분석해 얻은 결과가 아닙니다." : "영상 각도 측정과 REBA 계산 엔진 연결 전입니다. 현재 확정 점수는 없습니다."}</p>

@@ -57,7 +57,7 @@ function ConfirmationContent() {
   }
 
   return (
-    <EvaluationShell step="06" stepName="추천 장면 확인" title="AI 추천 장면을 확인해주세요" description="추천 이유를 확인하고 평가할 장면을 골라주세요. 추가 확인이 필요한 항목이 있다면 답해주세요." wide>
+    <EvaluationShell step="05" stepName="추천 장면 확인" title="AI 추천 장면을 확인해주세요" description="추천 이유를 확인하고 평가할 장면을 골라주세요. 추가 확인이 필요한 항목이 있다면 답해주세요." wide>
       <div className="confirmation-content">
       {demoMode ? <p className="demo-disclaimer">추천 이유·시간·불확실한 항목은 화면 확인용 예시입니다. 실제 AI 분석 결과가 아닙니다.</p> : <p className="analysis-notice" role="status">분석 결과 대기 · 아직 추천 장면을 받지 못했습니다. <Link href="/analysis">분석 화면으로</Link></p>}
       <h2>평가 추천 장면 · 영상 {videoNumber}{candidate ? ` · ${formatVideoTime(candidate.time)}` : ""}</h2>

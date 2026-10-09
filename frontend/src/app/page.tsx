@@ -22,8 +22,8 @@ export default function DashboardPage() {
       {dashboard.evaluations.length ? <div className="dashboard-person-list">
         {dashboard.evaluations.map((person) => <button key={person.id} type="button" onClick={() => router.push(selectPerson(person.id))}>
           <span className="person-avatar" aria-hidden="true">{person.name.slice(0, 1)}</span>
-          <span className="person-details"><strong>{person.name}</strong><small>{person.work.task || "작업 정보 입력 전"}</small></span>
-          <span className="person-progress">{person.lastPath === "/evaluation" ? "시작 전" : "이어서 평가"}</span>
+          <span className="person-details"><strong>{person.name}</strong><small>작업 자세 평가</small></span>
+          <span className="person-progress">{person.lastPath === "/upload/1" && Object.values(person.fileKeys).every((key) => key === null) ? "시작 전" : "이어서 평가"}</span>
           <span aria-hidden="true">→</span>
         </button>)}
       </div> : <div className="dashboard-empty">

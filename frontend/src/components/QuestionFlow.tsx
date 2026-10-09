@@ -38,9 +38,9 @@ export default function QuestionFlow({ videoNumber, groupNumber }: { videoNumber
 
   return (
     <EvaluationShell
-      step="04"
+      step="03"
       stepName="작업 조건 입력"
-      eyebrow={`04 / 08 · 영상 ${videoNumber} / 3 · Q${groupNumber} ${group.name}`}
+      eyebrow={`03 / 07 · 영상 ${videoNumber} / 3 · Q${groupNumber} ${group.name}`}
       title={group.title}
       description={group.description}
       media={<ScenePreview number={videoNumber} />}

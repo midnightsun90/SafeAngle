@@ -51,7 +51,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     setFormError("");
     try {
       if (needsName) await setEvaluatorName(name);
-      else { await addPerson(name); router.push("/evaluation"); setCreating(false); }
+      else { await addPerson(name); router.push("/upload/1"); setCreating(false); }
       setName("");
     } catch {
       setFormError("DB에 저장하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
