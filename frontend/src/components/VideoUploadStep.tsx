@@ -4,6 +4,7 @@ import { useEffect, useState, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
+import { formatVideoTime, isVideoFile } from "@/lib/video";
 
 const videoSteps = {
   1: {
@@ -29,17 +30,6 @@ const videoSteps = {
   },
 } as const;
 
-function formatDuration(seconds: number): string {
-  const totalSeconds = Math.floor(seconds);
-  const minutes = Math.floor(totalSeconds / 60);
-  const remainingSeconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${minutes}:${remainingSeconds}`;
-}
-
-function isVideo(file: File): boolean {
-  return file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|avi)$/i.test(file.name);
-}
-
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   const router = useRouter();
   const { files, setFile } = useVideoFiles();
@@ -57,7 +47,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     const url = URL.createObjectURL(selectedFile);
     video.preload = "metadata";
     video.onloadedmetadata = () => {
-      setDuration(Number.isFinite(video.duration) ? formatDuration(video.duration) : "길이 확인 불가");
+      setDuration(Number.isFinite(video.duration) ? formatVideoTime(video.duration) : "길이 확인 불가");
     };
     video.onerror = () => setDuration("길이 확인 불가");
     video.src = url;
@@ -73,7 +63,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
 
   function selectFile(file: File | undefined) {
     if (!file) return;
-    if (!isVideo(file)) {
+    if (!isVideoFile(file)) {
       setMessage("영상 파일을 선택해 주세요.");
       setHasError(true);
       return;
@@ -102,11 +92,7 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
       return;
     }
 
-    if (config.nextPath) {
-      router.push(config.nextPath);
-      return;
-    }
-
+    router.push(config.nextPath);
   }
 
   return (

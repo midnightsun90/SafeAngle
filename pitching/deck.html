@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeAngle — Pitch Deck</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px; background: #e5e5e5; color: #111; font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+    .slide { position: relative; width: 1280px; height: 720px; margin: 0 auto 32px; padding: 72px 80px; overflow: hidden; background: #fff; }
+    .cover { display: flex; align-items: center; justify-content: center; }
+    .cover h1 { margin: 0; font-size: 64px; font-weight: 600; }
+    .label { margin: 0 0 22px; color: #666; font-size: 18px; letter-spacing: 2px; }
+    h2 { margin: 0; font-size: 44px; line-height: 1.4; letter-spacing: -1.5px; }
+    .audience { margin: 20px 0 40px; font-size: 20px; color: #555; }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+    .step { border-top: 2px solid #111; padding-top: 20px; }
+    .step h3 { margin: 0 0 16px; font-size: 26px; }
+    .step p { margin: 0; font-size: 21px; line-height: 1.7; color: #444; }
+    .question { margin: 44px 0 0; font-size: 25px; font-weight: 600; }
+    .draft-note { position: absolute; bottom: 28px; left: 80px; margin: 0; font-size: 14px; color: #777; }
+    .background-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 48px; margin-top: 34px; }
+    .background-grid h3 { margin: 0 0 18px; font-size: 26px; }
+    .law-quote { margin: 0; padding-left: 20px; border-left: 3px solid #111; font-size: 22px; line-height: 1.65; }
+    .law-details { margin: 18px 0 0; font-size: 18px; line-height: 1.7; color: #444; }
+    .time-number { margin: 0; font-size: 58px; font-weight: 700; line-height: 1.25; }
+    .time-context { margin: 16px 0 0; font-size: 20px; line-height: 1.65; }
+    .scope-note { margin: 16px 0 0; font-size: 16px; line-height: 1.6; color: #666; }
+    .sources { position: absolute; bottom: 28px; left: 80px; right: 80px; margin: 0; font-size: 13px; line-height: 1.6; color: #666; }
+    .sources a { color: inherit; }
+    @page { size: 338.6667mm 190.5mm; margin: 0; }
+    @media print {
+      html, body { margin: 0; padding: 0; background: #fff; }
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .slide { margin: 0; width: 338.6667mm; height: 190.5mm; break-after: page; break-inside: avoid; }
+      .slide:last-child { break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <!-- .slide 하나가 PDF 한 페이지. -->
+  <section class="slide cover" aria-label="제목">
+    <h1>솔로연합</h1>
+  </section>
+  <section class="slide" aria-labelledby="background-title">
+    <p class="label">BACKGROUND</p>
+    <h2 id="background-title">정기적으로 해야 하는 조사,<br>사람의 관찰과 평가가 필요합니다.</h2>
+    <div class="background-grid">
+      <div>
+        <h3>근골격계부담작업 유해요인조사</h3>
+        <blockquote class="law-quote">“사업주는 근로자가 근골격계부담작업을 하는 경우에 <strong>3년마다</strong> 다음 각 호의 사항에 대한 유해요인조사를 하여야 한다.”</blockquote>
+        <p class="law-details">산업안전보건기준에 관한 규칙 제657조 제1항<br>조사 대상: 작업장 상황 · 작업조건 · 질환 징후와 증상<br>신설 사업장: 신설일부터 1년 이내 최초 조사</p>
+      </div>
+      <div>
+        <h3>해외 인간공학 평가 서비스 사례</h3>
+        <p class="time-number">20–40분 / 1명</p>
+        <p class="time-context">호주 멜버른의 서비스 업체가 안내한<br>근로자별 직장 인간공학 평가 시간.</p>
+        <p class="scope-note">면담·관찰·작업환경 조정 등을 포함한 평가 안내.<br>국내 유해요인조사 평균이나 REBA 채점 시간은 아님.</p>
+      </div>
+    </div>
+    <p class="sources">법령: <a href="https://www.law.go.kr/lsLinkCommonInfo.do?chrClsCd=010202&amp;lsJoLnkSeq=1028543325">국가법령정보센터 제657조</a> · 시행 2026.03.02 / 확인 2026.10.09<br>시간 사례: <a href="https://corporateworkhealth.com.au/ergonomic-assessments-for-melbourne-businesses-what-to-expect-and-how-to-prepare/">Corporate Work Health Australia</a> · 2026.06.10 · 서비스 안내 수치</p>
+  </section>
+  <section class="slide" aria-labelledby="problem-title">
+    <p class="label">PROBLEM</p>
+    <h2 id="problem-title">작업 영상에서 위험 자세를 찾고,<br>평가 근거까지 정리해야 합니다.</h2>
+    <p class="audience">사업장 보건관리자 · 유해요인조사 실무자</p>
+    <div class="steps">
+      <div class="step">
+        <h3>1. 위험 장면 찾기</h3>
+        <p>작업 중 자세가 바뀌는 영상에서<br>평가할 순간을 선택합니다.</p>
+      </div>
+      <div class="step">
+        <h3>2. 평가 조건 확인</h3>
+        <p>부위별 자세와 기준을 대조하고,<br>하중·반복 등 추가 조건을 확인합니다.</p>
+      </div>
+      <div class="step">
+        <h3>3. 근거 기록</h3>
+        <p>어느 장면이 어떤 기준에 해당했는지<br>평가 결과와 함께 남깁니다.</p>
+      </div>
+    </div>
+    <p class="question">위험 장면부터 평가 근거까지, 한 흐름으로 확인할 수 있을까?</p>
+    <p class="draft-note">줄이려는 업무: 위험 장면 탐색 · 자세 기준 대조 · 근거 정리 / 국내 소요 시간과 절감 효과는 검증 예정</p>
+  </section>
+</body>
+</html>

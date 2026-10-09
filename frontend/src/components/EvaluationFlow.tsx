@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useVideoFiles } from "@/components/VideoFilesProvider";
+import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
 import { analyzeVideo, type VideoAnalysis } from "../../../lib/pose/video.ts";
 import { analyzePoses } from "../../../lib/analysis.ts";
 import { drawPose } from "../../../lib/pose/draw.ts";
@@ -23,9 +23,9 @@ const QUESTION_LABELS:Partial<Record<AnswerName|"scene",string>>={...Object.from
 const BAND_OPTIONS={
   neckBase:[[1,"중립·0~20° 앞굽힘"],[2,"20° 초과 앞굽힘 또는 뒤젖힘"]],
   wristBase:[[1,"0~15° 굽힘·젖힘"],[2,"15° 초과 굽힘·젖힘"]],
-  trunkBase:[[1,"똑바로 섬"],[2,"0~20° 앞굽힘·뒤젖힘"],[3,"20~60° 앞굽힘 또는 20° 초과 뒤젖힘"],[4,"60° 초과 앞굽힘"]],
+  trunkBase:[[1,"똑바로 섬"],[2,"0~20° 앞굽힘·뒤젖힘"],[3,"20° 초과~60° 앞굽힘 또는 20° 초과 뒤젖힘"],[4,"60° 초과 앞굽힘"]],
   kneeExtra:[[0,"30° 미만"],[1,"30~60°"],[2,"60° 초과"]],
-  upperArmBase:[[1,"뒤로 20°~앞으로 20°"],[2,"뒤로 20° 초과 또는 앞으로 20~45°"],[3,"앞으로 45~90°"],[4,"앞으로 90° 초과"]],
+  upperArmBase:[[1,"뒤로 20°~앞으로 20°"],[2,"뒤로 20° 초과 또는 앞으로 20° 초과~45°"],[3,"앞으로 45° 초과~90°"],[4,"앞으로 90° 초과"]],
   lowerArmBase:[[1,"팔꿈치 60~100° 굽힘"],[2,"60° 미만 또는 100° 초과"]],
 } as const;
 type BandName=keyof typeof BAND_OPTIONS;
@@ -45,7 +45,7 @@ function NumericQuestion({name,label,field,max,change}:{name:string;label:string
 
 export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void}){
   const {files,replaceFiles}=useVideoFiles();
-  const videos=useMemo(()=>Object.values(files).filter((f):f is File=>f!==null).map(file=>({file,id:crypto.randomUUID()})),[files]);
+  const videos=useMemo(()=>Object.entries(files).filter(([,file])=>file!==null).map(([number,file])=>({number:Number(number) as VideoNumber,file:file!,id:crypto.randomUUID()})),[files]);
   const [active,setActive]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState("");
   function choose(files:FileList|null){
     if(!files?.length)return;
@@ -57,13 +57,14 @@ export default function EvaluationFlow({onStage}:{onStage:(stage:number)=>void})
       <label className="sa-question"><span>영상 파일 (최대 3편, 각 60초·250MB 이내)</span><input id="evaluation-files" type="file" accept="video/*" multiple disabled={busy} onChange={e=>choose(e.target.files)}/></label>
       <p className="sa-muted">측면에서 한 사람의 전신과 손목을 담아 주세요. 영상을 다시 선택하면 현재 분석과 답변이 초기화됩니다. 새로고침하면 파일을 다시 선택해야 합니다.</p>
       {error&&<p role="alert" className="sa-error">{error}</p>}
-      {!!videos.length&&<div className="sa-video-tabs" role="tablist" aria-label="영상별 평가">{videos.map((v,i)=><button type="button" role="tab" aria-selected={active===i} key={v.id} disabled={busy} onClick={()=>{setActive(i);onStage(3);}}>영상 {i+1} · {v.file.name}</button>)}</div>}
+      {!!videos.length&&<div className="sa-video-tabs" role="tablist" aria-label="영상별 평가">{videos.map((v,i)=><button type="button" role="tab" aria-selected={active===i} key={v.id} disabled={busy} onClick={()=>{setActive(i);onStage(3);}}>영상 {v.number} · {v.file.name}</button>)}</div>}
     </div>
-    {videos.map((v,i)=><div key={v.id} hidden={i!==active} data-video-active={i===active}><VideoEvaluation file={v.file} videoId={v.id} active={i===active} onBusy={setBusy} onStage={onStage}/></div>)}
+    {videos.map((v,i)=><div key={v.id} hidden={i!==active} data-video-active={i===active}><VideoEvaluation number={v.number} file={v.file} videoId={v.id} active={i===active} onBusy={setBusy} onStage={onStage}/></div>)}
   </section>;
 }
 
-function VideoEvaluation({file,videoId,active,onBusy,onStage}:{file:File;videoId:string;active:boolean;onBusy:(v:boolean)=>void;onStage:(n:number)=>void}){
+function VideoEvaluation({number,file,videoId,active,onBusy,onStage}:{number:VideoNumber;file:File;videoId:string;active:boolean;onBusy:(v:boolean)=>void;onStage:(n:number)=>void}){
+  const {publishResult}=useVideoFiles();
   const activeId=(name:string)=>active?name:undefined;
   const [url,setUrl]=useState(""),[analysis,setAnalysis]=useState<VideoAnalysis|null>(null),[phase,setPhase]=useState("분석 전"),[error,setError]=useState("");
   const [busy,setBusy]=useState(false),[progress,setProgress]=useState([0,1]),[index,setIndex]=useState(0),[side,setSide]=useState<Side>("left"),[facing,setFacing]=useState<Facing|null>(null);
@@ -72,9 +73,9 @@ function VideoEvaluation({file,videoId,active,onBusy,onStage}:{file:File;videoId
   useEffect(()=>{const objectUrl=URL.createObjectURL(file);setUrl(objectUrl);return()=>{runId.current++;controller.current?.abort();URL.revokeObjectURL(objectUrl);};},[file]);
   const view:Analysis|null=useMemo(()=>analysis&&facing!==analysis.facing?analyzePoses(analysis.frames.map(f=>({timeSec:f.timeSec,personCount:f.personCount,landmarks:f.landmarks})),analysis.size,facing===null?{policy:analysis.policy}:{facing,policy:analysis.policy}):analysis,[analysis,facing]);
   const frame=view?.frames[index];
-  const scene=view&&frame?sceneFromAnalysis(view,videoId,index,side):null;
-  let score=null,scoreError="";
-  try{if(scene&&answers)score=scoreScene(scene,answers);}catch(e){scoreError=e instanceof Error?e.message:String(e);}
+  const scene=useMemo(()=>view&&frame?sceneFromAnalysis(view,videoId,index,side):null,[view,frame,videoId,index,side]);
+  const {score,scoreError}=useMemo(()=>{try{return {score:scene&&answers?scoreScene(scene,answers):null,scoreError:""};}catch(e){return {score:null,scoreError:e instanceof Error?e.message:String(e)};}},[scene,answers]);
+  useEffect(()=>publishResult(number,score),[number,score,publishResult]);
   useEffect(()=>{if(active&&answers)onStage(score?.status==="complete"?6:4);},[active,answers,score?.status,onStage]);
 
   useEffect(()=>{
