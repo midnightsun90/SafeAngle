@@ -8,7 +8,7 @@ import { useVideoFiles } from "@/components/VideoFilesProvider";
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson } = useVideoFiles();
+  const { dashboard, ready, storageError, connectionError, activeEvaluation, files, storedVideos, demoMode, setEvaluatorName, addPerson, logOut, selectPerson, startDemo } = useVideoFiles();
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -41,7 +41,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     };
   }, [profileMenu]);
   useEffect(() => {
-    if (ready && dashboard.evaluatorName && pathname !== "/" && !activeEvaluation && !demoMode) router.replace("/");
+    if (ready && dashboard.evaluatorName && pathname !== "/" && !pathname.startsWith("/output-preview") && !activeEvaluation && !demoMode) router.replace("/");
   }, [ready, dashboard.evaluatorName, pathname, activeEvaluation, demoMode, router]);
 
   async function submitName(event: FormEvent<HTMLFormElement>) {
@@ -95,6 +95,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   if (!ready) return <div className="dashboard-loading">SafeAngle</div>;
+  if (pathname.startsWith("/output-preview")) return <>{children}</>;
 
   return <div className={`dashboard-shell${expanded ? "" : " dashboard-shell-collapsed"}${modalOpen ? " dashboard-shell-modal" : ""}`}>
     {mobileOpen && <button className="dashboard-backdrop" type="button" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)} />}
@@ -146,7 +147,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       <div className={`dashboard-content${modalOpen ? " dashboard-content-blurred" : ""}`} aria-hidden={modalOpen} inert={modalOpen}>
         {storageError && <p className="dashboard-storage-error" role="alert">브라우저에 저장하지 못했습니다. 저장 공간 설정을 확인해 주세요.</p>}
         {connectionError && <p className="dashboard-storage-error" role="alert">{connectionError}</p>}
-        {needsVideoAgain && pathname !== "/" && <p className="dashboard-storage-error" role="status">이전에 선택한 영상은 다시 골라야 합니다. <Link href="/upload/1">영상 다시 선택하기 →</Link></p>}
+        {needsVideoAgain && pathname !== "/" && <p className="dashboard-storage-error" role="status">이전에 선택한 영상은 다시 골라야 합니다. <Link className="confirmation-soft-button" href="/upload/1">영상 다시 선택하기 →</Link></p>}
         {children}
       </div>
     </div>
@@ -161,6 +162,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           {(formError || connectionError) && <p role="alert">{formError || connectionError}</p>}
           <button className="dashboard-modal-submit" type="submit" disabled={saving}>{saving ? "저장 중..." : needsName ? "시작하기" : "평가 시작"} <span aria-hidden="true">→</span></button>
         </form>
+        {needsName && <button className="confirmation-soft-button" type="button" onClick={() => { setCreating(false); startDemo(); router.push("/review"); }}>예시 사진으로 화면 둘러보기 →</button>}
         {!needsName && <button className="dashboard-modal-cancel" type="button" onClick={() => setCreating(false)}>취소</button>}
       </div>
     </div>}

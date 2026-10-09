@@ -36,6 +36,8 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+      - name: Prepare pose model for static site
+        run: npm run prepare:pose
       - name: Build static site
         working-directory: frontend
         env:

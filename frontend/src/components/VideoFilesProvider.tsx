@@ -434,6 +434,9 @@ export function VideoFilesProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.from("assessment_videos").delete()
         .eq("assessment_id", activeEvaluation.assessmentId).eq("posture_type", videoPostureTypes[number - 1]);
       if (error) throw error;
+      const { error: poseError } = await supabase.from("assessment_pose_results").delete()
+        .eq("assessment_id", activeEvaluation.assessmentId).eq("posture_type", videoPostureTypes[number - 1]);
+      if (poseError) throw poseError;
     }
     setStoredVideosByPerson((current) => ({ ...current, [id]: { ...(current[id] ?? emptyStoredVideos()), [number]: null } }));
     clearResult(number);
