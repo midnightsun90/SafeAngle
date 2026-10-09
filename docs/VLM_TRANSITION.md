@@ -66,7 +66,13 @@ npm --prefix frontend run dev
 
 웹 `http://localhost:3000`, API `http://127.0.0.1:3212/api/vision`. localhost 웹은 API 주소를 자동 사용한다. 원격 웹은 `NEXT_PUBLIC_VISION_API_URL`에 HTTPS 주소를 설정한 뒤 다시 빌드한다.
 
-GitHub Pages는 별도 API 서버가 필요하다. workflow는 repository variable `VISION_API_URL`을 읽지만 서버 배포·변수 등록·심사 URL에서의 실제 GPT 호출은 아직 완료되지 않았다. 서버 환경은 `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, `ALLOWED_ORIGIN`, `PORT`, `HOST`다.
+공개 웹은 `https://midnightsun90.github.io/SafeAngle/`, API는 `https://safeangle-api.vercel.app/api/vision`이다. GitHub Pages를 GitHub Actions 방식으로 활성화하고 Vercel의 `safeangle-api` 프로젝트에 API를 배포했다. 실제 공개 웹 호출 검증 상태는 [검증 기록](VLM_VERIFICATION.md)에 남긴다.
+
+Pages workflow는 repository variable `VISION_API_URL`을 빌드 시 읽는다. 값은 위 HTTPS API 주소다. API는 루트 `vercel.json`과 `api/vision.mjs`로 별도 배포하며 Next.js나 영상·모델 자산을 업로드하지 않는다. `OPENAI_API_KEY`는 Vercel Production의 Secret이고 브라우저나 Git에 넣지 않는다. `NODEJS_HELPERS=0`으로 원본 HTTP 요청을 공유 처리기에 넘긴다. GPT 대기 120초를 위해 함수 최대 실행 시간을 180초로 설정했다.
+
+공개 API의 기본 허용 Origin은 `https://midnightsun90.github.io`다. 웹은 현재 Supabase 세션의 Bearer 토큰을 전달하고, API가 같은 Supabase의 `/auth/v1/user`에서 검증한다. 없는 토큰·만료된 세션은 401이며 OpenAI를 호출하지 않는다. 기존 익명 로그인과 RLS는 유지한다. 다른 배포를 연결할 때 `ALLOWED_ORIGIN`과 필요 시 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`를 설정한다. 이 publishable key는 서버 비밀 키가 아니다.
+
+로컬 서버 환경은 `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, `ALLOWED_ORIGIN`, `PORT`, `HOST`다. 단일 프로세스 동시·분당 제한은 배포 인스턴스마다 적용되므로 전체 프로젝트 지출 상한을 대신하지 않는다.
 
 ## 상태와 검증
 

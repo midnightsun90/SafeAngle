@@ -1,0 +1,13 @@
+.local/
+.env*
+frontend/
+dev/
+design/
+docs/
+public/
+tests/
+scripts/*
+!scripts/build-api.mjs
+assets/
+.engine-build/
+.api-build/
