@@ -1,42 +1,34 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
 import { demoImages } from "@/lib/demoImages";
 import { formatVideoTime } from "@/lib/video";
+import { useVideoSource } from "@/components/useVideoSource";
 
 export default function ScenePreview({ number }: { number: VideoNumber }) {
-  const { files, selectedTimes, demoMode } = useVideoFiles();
+  const { files, storedVideos, selectedTimes, demoMode } = useVideoFiles();
   const file = files[number];
+  const storedVideo = storedVideos[number];
+  const { src, error } = useVideoSource(number);
   const selectedTime = selectedTimes[number];
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (video && video.readyState >= 1 && selectedTime !== null) video.currentTime = selectedTime;
   }, [selectedTime]);
 
-  useEffect(() => {
-    if (!file || demoMode) return;
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
-    return () => {
-      setVideoUrl(null);
-      URL.revokeObjectURL(url);
-    };
-  }, [file, demoMode]);
-
   return (
     <div className="scene-preview">
       {demoMode ? (
         <Image src={demoImages[number]} alt={`영상 ${number} 작업 예시 사진`} fill unoptimized sizes="370px" />
-      ) : file ? (
+      ) : file || storedVideo ? (
         <video
           ref={videoRef}
-          src={videoUrl ?? undefined}
+          src={src ?? undefined}
           controls
           playsInline
           preload="metadata"
@@ -49,6 +41,7 @@ export default function ScenePreview({ number }: { number: VideoNumber }) {
       ) : (
         <div className="scene-preview-empty"><Link href={`/upload/${number}`}>영상 {number} 선택하기</Link></div>
       )}
+      {error && <p role="alert">{error}</p>}
       {(demoMode || selectedTime !== null) && (
         <span className="scene-preview-caption">영상 {number} · {demoMode ? "예시 사진" : formatVideoTime(selectedTime ?? 0)}</span>
       )}

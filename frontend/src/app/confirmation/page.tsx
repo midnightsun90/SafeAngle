@@ -23,7 +23,7 @@ export default function ConfirmationPage() {
 
 function ConfirmationContent() {
   const router = useRouter();
-  const { demoMode, files, activeVideos, answers, selectedTimes, setSelectedTime, setAnswer, confirmScene, setResultVideo } = useVideoFiles();
+  const { demoMode, files, storedVideos, activeVideos, answers, selectedTimes, setSelectedTime, setAnswer, confirmScene, setResultVideo } = useVideoFiles();
   const [videoNumber, setVideoNumber] = useState(activeVideos[0] ?? 1);
   const [candidateIndex, setCandidateIndex] = useState<number | null>(null);
   const [manual, setManual] = useState(false);
@@ -66,7 +66,7 @@ function ConfirmationContent() {
       {candidate && <p>추천 이유: {candidate.reason}</p>}
       <p>입력한 작업 조건도 함께 확인해주세요. <Link href={`/questions/${videoNumber}/2`}>작업 조건 수정하기</Link></p>
       <dl className="confirmation-conditions">{[2, 3, 4].flatMap((group) => questionGroups[group as 2 | 3 | 4].questions).map((question) => <div key={question.key}><dt>{question.label}</dt><dd>{question.options.find((option) => option.value === answers[videoNumber][question.key])?.label ?? "미입력"}</dd></div>)}</dl>
-      <button type="button" disabled={!demoMode && !files[videoNumber]} onClick={() => setManual(!manual)}>직접 장면 선택하기</button>
+      <button type="button" disabled={!demoMode && !files[videoNumber] && !storedVideos[videoNumber]} onClick={() => setManual(!manual)}>직접 장면 선택하기</button>
       {manual && <div className="question-field"><label>장면 시간(초) <input ref={timeInput} type="number" min="0" step="0.1" /></label><button type="button" onClick={() => { const raw = timeInput.current?.value; const time = Number(raw); if (!raw || !Number.isFinite(time) || time < 0) { setMessage("0 이상의 장면 시간을 입력해주세요."); return; } setSelectedTime(videoNumber, time); setCandidateIndex(null); setMessage("직접 선택한 장면은 재분석이 필요합니다. 엔진 연결 전에는 평가할 수 없습니다."); }}>이 시간 선택하기</button></div>}
       {selectedTimes[videoNumber] !== null && !candidate && <p>선택한 시간 {formatVideoTime(selectedTimes[videoNumber] ?? 0)} · 측정 대기</p>}
       {candidate?.uncertain && <fieldset className="question-field"><legend>불확실함 · 몸통 비틀림</legend><p>영상만으로는 비틀림 여부를 구분하기 어렵습니다. 이 장면에서 몸통을 비틀고 있나요?</p><div className="question-options">{[{ value: "yes", label: "있음" }, { value: "no", label: "없음" }, { value: "unknown", label: "확인 불가" }].map((option) => <label className="question-option" key={option.value}><input type="radio" name="scene_trunk_twist" checked={answers[videoNumber].scene_trunk_twist === option.value} onChange={() => setAnswer(videoNumber, "scene_trunk_twist", option.value)} />{option.label}</label>)}</div><p className="question-hint">판단하기 어렵다면 확인 불가를 선택해주세요.</p></fieldset>}

@@ -4,19 +4,23 @@ import { useEffect, useState, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import EvaluationShell from "@/components/EvaluationShell";
 import { useVideoFiles, type VideoNumber } from "@/components/VideoFilesProvider";
-import { formatVideoTime, isVideoFile } from "@/lib/video";
+import { formatVideoTime } from "@/lib/video";
+import { validateVideoFile } from "@/lib/videoStorage";
 import { filmingNotice, uploadCopy } from "@/lib/uploadCopy";
 
 
 export default function VideoUploadStep({ number }: { number: VideoNumber }) {
   const router = useRouter();
-  const { files, selectedTimes, activeEvaluation, skipped, setFile, skipVideo } = useVideoFiles();
+  const { files, storedVideos, selectedTimes, activeEvaluation, skipped, setFile, skipVideo } = useVideoFiles();
   const selectedFile = files[number];
+  const storedVideo = storedVideos[number];
   const config = uploadCopy[number];
   const [duration, setDuration] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [message, setMessage] = useState("");
   const [hasError, setHasError] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     if (!selectedFile) return;
@@ -39,39 +43,52 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
     };
   }, [selectedFile]);
 
-  function selectFile(file: File | undefined) {
+  async function selectFile(file: File | undefined) {
     if (!file) return;
-    if (!isVideoFile(file)) {
-      setMessage("영상 파일을 선택해 주세요.");
+    const validationError = validateVideoFile(file);
+    if (validationError) {
+      setMessage(validationError);
       setHasError(true);
       return;
     }
-    setFile(number, file);
-    setDuration(null);
-    setMessage("");
+    setUploading(true);
+    setProgress(0);
+    setMessage("영상을 업로드하고 있습니다.");
     setHasError(false);
+    try {
+      await setFile(number, file, setProgress);
+      setDuration(null);
+      setMessage("영상이 저장됐습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "영상을 저장하지 못했습니다. 다시 시도해 주세요.");
+      setHasError(true);
+    } finally {
+      setUploading(false);
+    }
   }
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
-    selectFile(event.target.files?.[0]);
+    void selectFile(event.target.files?.[0]);
     event.target.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
-    selectFile(event.dataTransfer.files[0]);
+    if (uploading) return;
+    void selectFile(event.dataTransfer.files[0]);
   }
 
   function handleNext() {
-    if (!selectedFile) {
+    if (uploading) return;
+    if (!selectedFile && !storedVideo) {
       setMessage(`영상 ${number} 파일을 먼저 선택해 주세요.`);
       setHasError(true);
       return;
     }
 
     if (number === 3 && activeEvaluation && !activeEvaluation.lastPath.startsWith("/upload/")) {
-      const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index]));
+      const allFilesReady = ([1, 2, 3] as const).every((index) => skipped[index] || Boolean(files[index] || storedVideos[index]));
       const beforeSceneSelection = activeEvaluation.lastPath.startsWith("/questions/") || ["/review", "/analysis", "/confirmation"].includes(activeEvaluation.lastPath);
       const readyToResume = beforeSceneSelection || ([1, 2, 3] as const).every((index) => skipped[index] || selectedTimes[index] !== null);
       if (allFilesReady && readyToResume) { router.push(activeEvaluation.lastPath); return; }
@@ -94,23 +111,27 @@ export default function VideoUploadStep({ number }: { number: VideoNumber }) {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
-          <input className="upload-file-input" type="file" accept="video/*,.mov,.mp4,.webm,.m4v" onChange={handleInputChange} aria-label={`영상 ${number} 선택`} />
+          <input className="upload-file-input" type="file" accept="video/*,.mov,.mp4,.webm,.m4v" onChange={handleInputChange} aria-label={`영상 ${number} 선택`} disabled={uploading} />
           <span className="upload-plus" aria-hidden="true">+</span>
-          <span className="upload-title">{selectedFile ? `영상 ${number} 교체` : `영상 ${number} 선택`}</span>
-          <span className="upload-hint">파일을 끌어다 놓거나 선택하세요</span>
+          <span className="upload-title">{selectedFile || storedVideo ? `영상 ${number} 교체` : `영상 ${number} 선택`}</span>
+          <span className="upload-hint">영상 파일 선택 · 최대 50MB</span>
         </label>
 
-        {selectedFile && (
+        {(selectedFile || storedVideo) && (
           <p className="selected-video" aria-live="polite">
-            <span className="selected-video-name">{selectedFile.name}</span>
-            <span>{duration ?? "길이 확인 중"}</span>
+            <span className="selected-video-name">{selectedFile?.name ?? storedVideo?.original_filename ?? "저장된 영상"}</span>
+            <span>{duration ?? (storedVideo?.duration_seconds != null ? formatVideoTime(storedVideo.duration_seconds) : "길이 확인 불가")}</span>
           </p>
         )}
+        {uploading && <p className="form-status" role="status">업로드 중 {progress}%</p>}
 
         <p className="shooting-note">{config.note}</p>
 
-        <button className="next-button" type="button" onClick={handleNext}>{config.nextLabel} <span aria-hidden="true">→</span></button>
-        <button className="upload-skip" type="button" onClick={() => { skipVideo(number); router.push(config.nextPath); }}>이 작업은 하지 않아요 · 건너뛰기</button>
+        <button className="next-button" type="button" onClick={handleNext} disabled={uploading}>{config.nextLabel} <span aria-hidden="true">→</span></button>
+        <button className="upload-skip" type="button" disabled={uploading} onClick={async () => {
+          try { await skipVideo(number); router.push(config.nextPath); }
+          catch { setMessage("영상을 삭제하지 못했습니다. 다시 시도해 주세요."); setHasError(true); }
+        }}>이 작업은 하지 않아요 · 건너뛰기</button>
         {message && <p className={`form-status${hasError ? " form-status-error" : ""}`} role={hasError ? "alert" : "status"}>{message}</p>}
       </section>
     </EvaluationShell>
